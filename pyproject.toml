@@ -1,0 +1,41 @@
+[project]
+name = "noema"
+version = "0.1.0"
+description = "Convert text into compact logical form for token-efficient RAG"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "faiss-cpu>=1.15.0",
+    "networkx>=3.6.1",
+    "pydantic>=2.13.4",
+    "sentence-transformers>=5.7.0",
+    "spacy>=3.8.14",
+    "tiktoken>=0.13.0",
+    "torch>=2.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.1",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
