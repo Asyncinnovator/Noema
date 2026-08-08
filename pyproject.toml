@@ -4,15 +4,19 @@ version = "0.1.0"
 description = "Convert text into compact logical form for token-efficient RAG"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.13"
 dependencies = [
     "faiss-cpu>=1.15.0",
+    "fastcoref>=2.1.6",
     "networkx>=3.6.1",
     "pydantic>=2.13.4",
+    "rich>=15.0.0",
     "sentence-transformers>=5.7.0",
     "spacy>=3.8.14",
     "tiktoken>=0.13.0",
     "torch>=2.5.0",
+    "transformers>=5.14.1",
+    "typer>=0.27.1",
 ]
 
 [dependency-groups]
