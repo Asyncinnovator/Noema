@@ -1,3 +1,5 @@
-from noema.validator.roundtrip import validate
+"""Round-trip validation: confidence scoring for decoded notation."""
 
-__all__ = ["validate"]
+from noema.validator.roundtrip import ValidationResult, validate
+
+__all__ = ["validate", "ValidationResult"]

@@ -1,10 +1,6 @@
 """Noema: knowledge graph and semantic compression library for token-efficient RAG.
 
-Public API is assembled here as each phase lands. Phase 1 (this version)
-exposes the schema, parsing, graph construction, and canonicalization
-pieces. `noema.compress()` and `noema.KnowledgeBase` land in later phases
-(notation encoding in Phase 2, storage/retrieval in Phases 3-4) and are not
-yet available.
+Public API is assembled here as each phase lands.
 """
 
 # NOTE: re-exported as `canonicalize_entities`, not `canonicalize`. The
@@ -18,8 +14,8 @@ yet available.
 from noema.canonicalize.dedup import canonicalize as canonicalize_entities
 from noema.graph import SemanticGraph
 from noema.parser import extract_entities, extract_relations
-from noema.notation import encode_graph, decode, parse_notation
-from noema.validator import validate
+from noema.notation import encode_graph, decode, parse_notation, ParsedNotation
+from noema.validator import validate, ValidationResult
 from noema.compress import count_tokens, compress
 from noema.storage.bundle import load_bundle, save_bundle, LoadedBundle
 from noema.storage.knowledge_base import KnowledgeBase, IngestReport
@@ -48,7 +44,9 @@ __all__ = [
     "encode_graph",
     "decode",
     "parse_notation",
+    "ParsedNotation",
     "validate",
+    "ValidationResult",
     "count_tokens",
     "compress",
     "load_bundle",
