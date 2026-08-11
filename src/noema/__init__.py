@@ -21,6 +21,8 @@ from noema.parser import extract_entities, extract_relations
 from noema.notation import encode_graph, decode, parse_notation
 from noema.validator import validate
 from noema.compress import count_tokens, compress
+from noema.storage.bundle import load_bundle, save_bundle, LoadedBundle
+from noema.storage.knowledge_base import KnowledgeBase, IngestReport
 from noema.schema import (
     Document,
     Entity,
@@ -49,4 +51,9 @@ __all__ = [
     "validate",
     "count_tokens",
     "compress",
+    "load_bundle",
+    "save_bundle",
+    "LoadedBundle",
+    "KnowledgeBase",
+    "IngestReport",
 ]
