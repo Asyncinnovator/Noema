@@ -18,6 +18,9 @@ yet available.
 from noema.canonicalize.dedup import canonicalize as canonicalize_entities
 from noema.graph import SemanticGraph
 from noema.parser import extract_entities, extract_relations
+from noema.notation import encode_graph, decode, parse_notation
+from noema.validator import validate
+from noema.compress import count_tokens, compress
 from noema.schema import (
     Document,
     Entity,
@@ -40,4 +43,10 @@ __all__ = [
     "extract_entities",
     "extract_relations",
     "canonicalize_entities",
+    "encode_graph",
+    "decode",
+    "parse_notation",
+    "validate",
+    "count_tokens",
+    "compress",
 ]
