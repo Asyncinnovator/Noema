@@ -25,14 +25,18 @@ Phase 7 (scale) concern once KBs are large enough for it to matter.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from noema.canonicalize.dedup import DEFAULT_SIMILARITY_THRESHOLD, canonicalize
 from noema.graph.builder import SemanticGraph
+from noema.notation.decoder import decode
 from noema.parser.entities import extract_entities
 from noema.parser.relations import extract_relations
+from noema.retrieval.assemble import DEFAULT_MAX_TOKENS, DEFAULT_TOKEN_MODEL, assemble
+from noema.retrieval.expand import expand_from_facts
+from noema.retrieval.vector_search import FactMatch, search_facts
 from noema.schema import Document, ParsedDocument
-from noema.storage.bundle import DEFAULT_EMBEDDING_MODEL, load_bundle, save_bundle
+from noema.storage.bundle import DEFAULT_EMBEDDING_MODEL, build_fact_index, load_bundle, save_bundle
 
 
 @dataclass
@@ -54,6 +58,29 @@ class IngestReport:
         during this ingest, rather than staying as their own node.
         """
         return max(0, self.entities_before - self.entities_after) if self.entities_before else 0
+
+
+@dataclass
+class RetrievalResult:
+    """Result of kb.retrieve(query, ...).
+
+    `text` is what the project plan's usage example injects into an LLM
+    prompt (`context.text`) -- its content depends on `format`: the raw
+    notation for format="notation" (the default, and the token-efficient
+    choice), or a decoded natural-language rendering for
+    format="natural_language". `notation` is always the raw notation
+    regardless of format, for the same reason CompressResult always
+    includes decoded_text: costs nothing to include, and makes a surprising
+    result debuggable.
+    """
+
+    text: str
+    notation: str
+    entity_ids: set[str] = field(default_factory=set)
+    relation_ids: set[str] = field(default_factory=set)
+    token_count: int = 0
+    truncated: bool = False
+    fact_matches: list[FactMatch] = field(default_factory=list)
 
 
 def _normalize_documents(documents: str | Document | list[str | Document]) -> list[Document]:
@@ -97,6 +124,25 @@ class KnowledgeBase:
         self._embedding_model = embedding_model
         self._similarity_threshold = similarity_threshold
 
+        # Cached fact (relation) embedding index for retrieve(). Lazily
+        # built on first retrieve() call, invalidated on every ingest()
+        # (the graph -- and therefore the facts -- changed), and restored
+        # cheaply on load() by reusing what load_bundle() already computed
+        # rather than re-embedding every fact from scratch right after a load.
+        self._fact_ids: list[str] | None = None
+        self._fact_index = None
+
+    def _invalidate_fact_index(self) -> None:
+        self._fact_ids = None
+        self._fact_index = None
+
+    def _ensure_fact_index(self):
+        if self._fact_index is None:
+            self._fact_ids, _embeddings, self._fact_index = build_fact_index(
+                self._graph, model_name=self._embedding_model
+            )
+        return self._fact_ids, self._fact_index
+
     def ingest(self, documents: str | Document | list[str | Document]) -> IngestReport:
         """Parse, canonicalize, and merge new documents into the knowledge base.
 
@@ -124,6 +170,7 @@ class KnowledgeBase:
             similarity_threshold=self._similarity_threshold,
             model_name=self._embedding_model,
         )
+        self._invalidate_fact_index()
 
         return IngestReport(
             documents_ingested=len(docs),
@@ -143,7 +190,59 @@ class KnowledgeBase:
         loaded = load_bundle(path)
         kb = cls(embedding_model=loaded.manifest.get("embedding_model", DEFAULT_EMBEDDING_MODEL))
         kb._graph = loaded.graph
+        # The bundle already carried a fully-built fact index -- reuse it
+        # directly rather than re-embedding every fact via _ensure_fact_index()
+        # on the first retrieve() call after a load.
+        kb._fact_ids = loaded.fact_ids
+        kb._fact_index = loaded.index
         return kb
+
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+        hops: int = 1,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        format: str = "notation",
+        token_model: str = DEFAULT_TOKEN_MODEL,
+    ) -> RetrievalResult:
+        """Hybrid retrieval: vector search over facts, then graph expansion,
+        then notation assembly under a token budget -- the full "vector
+        search -> graph expansion -> relevant sub-graph -> notation"
+        pipeline from the project plan's workflow diagram.
+
+        `format` controls what `.text` contains: "notation" (default, and
+        the token-efficient choice meant for LLM context injection) or
+        "natural_language" (decoded, for cases where the consuming prompt
+        expects prose rather than compact notation).
+        """
+        if format not in ("notation", "natural_language"):
+            raise ValueError(
+                f"Unknown format {format!r}; expected 'notation' or 'natural_language'"
+            )
+
+        fact_ids, index = self._ensure_fact_index()
+        matches = search_facts(
+            query, fact_ids, index, top_k=top_k, model_name=self._embedding_model
+        )
+
+        seed_relation_ids = [match.relation_id for match in matches]
+        expanded = expand_from_facts(self._graph, seed_relation_ids, hops=hops)
+        assembled = assemble(
+            self._graph, expanded, max_tokens=max_tokens, token_model=token_model
+        )
+
+        text = decode(assembled.notation) if format == "natural_language" else assembled.notation
+
+        return RetrievalResult(
+            text=text,
+            notation=assembled.notation,
+            entity_ids=assembled.entity_ids,
+            relation_ids=assembled.relation_ids,
+            token_count=assembled.token_count,
+            truncated=assembled.truncated,
+            fact_matches=matches,
+        )
 
     @property
     def graph(self) -> SemanticGraph:

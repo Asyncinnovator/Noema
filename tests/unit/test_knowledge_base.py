@@ -9,15 +9,24 @@ that cross-batch merging works.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import importlib
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 import noema.canonicalize.dedup as dedup
+import noema.retrieval.vector_search as vector_search
 import noema.storage.bundle as bundle
 from noema.schema import Document
 from noema.storage.knowledge_base import IngestReport, KnowledgeBase, _normalize_documents
+
+compress_module = importlib.import_module("noema.compress")
+
+
+class _WhitespaceEncoding:
+    def encode(self, text: str) -> list[str]:
+        return text.split()
 
 
 class _ExactMatchModel:
@@ -209,3 +218,94 @@ class TestSaveAndLoad:
                 e for e in loaded_kb.graph.entities if e.name.lower().startswith("google")
             ]
             assert len(google_nodes) == 1
+
+
+@pytest.fixture
+def patched_retrieval_stack():
+    """Patch every networked dependency kb.retrieve() touches: canonicalize's
+    embedding model, the fact index's embedding model, vector_search's query
+    embedding model, and the tokenizer used for the assembly budget.
+    """
+    model = _ExactMatchModel()
+    with patch.object(dedup, "_load_model", return_value=model), \
+         patch.object(bundle, "_load_model", return_value=model), \
+         patch.object(vector_search, "_load_model", return_value=model), \
+         patch.object(compress_module, "_load_token_encoding", return_value=_WhitespaceEncoding()):
+        yield
+
+
+class TestRetrieveBasic:
+    def test_retrieve_returns_matching_fact(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        result = kb.retrieve("Larry Page founded Google.", top_k=1)
+        assert "Larry Page" in result.text
+        assert "Google" in result.text
+
+    def test_retrieve_notation_format_is_default(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        result = kb.retrieve("Larry Page founded Google.")
+        assert result.text == result.notation
+
+    def test_retrieve_natural_language_format(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        result = kb.retrieve("Larry Page founded Google.", format="natural_language")
+        assert "Larry Page found Google" in result.text
+
+    def test_retrieve_invalid_format_raises(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        with pytest.raises(ValueError, match="notation.*natural_language|Unknown format"):
+            kb.retrieve("query", format="bogus")
+
+    def test_retrieve_fact_matches_populated(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        result = kb.retrieve("Larry Page founded Google.", top_k=1)
+        assert len(result.fact_matches) >= 1
+
+    def test_retrieve_on_empty_kb_returns_empty_result(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        result = kb.retrieve("anything")
+        assert result.text == ""
+        assert result.fact_matches == []
+
+
+class TestFactIndexCaching:
+    def test_index_built_lazily_not_at_construction(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        assert kb._fact_index is None
+
+    def test_repeated_retrieve_calls_build_index_once(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+
+        with patch.object(
+            bundle, "_load_model", return_value=_ExactMatchModel()
+        ) as build_model_mock:
+            kb.retrieve("query one")
+            kb.retrieve("query two")
+            kb.retrieve("query three")
+        assert build_model_mock.call_count == 1
+
+    def test_ingest_invalidates_cached_index(self, patched_retrieval_stack):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        kb.retrieve("warm the cache")
+        assert kb._fact_index is not None
+
+        kb.ingest("Sundar Pichai is the CEO of Google.")
+        assert kb._fact_index is None
+
+    def test_load_reuses_bundles_fact_index_without_rebuilding(self, patched_retrieval_stack, tmp_path):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        path = str(tmp_path / "kb.noema")
+        kb.save(path)
+
+        with patch.object(bundle, "_load_model") as build_model_mock:
+            loaded_kb = KnowledgeBase.load(path)
+        assert build_model_mock.called is False
+        assert loaded_kb._fact_index is not None

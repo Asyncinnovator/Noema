@@ -19,6 +19,16 @@ from noema.validator import validate, ValidationResult
 from noema.compress import count_tokens, compress
 from noema.storage.bundle import load_bundle, save_bundle, LoadedBundle
 from noema.storage.knowledge_base import KnowledgeBase, IngestReport
+from noema.retrieval import (
+    search_facts,
+    embed_query,
+    FactMatch,
+    expand_from_facts,
+    relations_within,
+    ExpandedSubgraph,
+    assemble,
+    AssembledContext,
+)
 from noema.schema import (
     Document,
     Entity,
@@ -54,4 +64,12 @@ __all__ = [
     "LoadedBundle",
     "KnowledgeBase",
     "IngestReport",
+    "search_facts",
+    "embed_query",
+    "FactMatch",
+    "expand_from_facts",
+    "relations_within",
+    "ExpandedSubgraph",
+    "assemble",
+    "AssembledContext",
 ]
