@@ -165,9 +165,20 @@ class TestCrossBatchCanonicalization:
         kb = KnowledgeBase()
         kb.ingest("Larry Page founded Google in 1998.")
         report = kb.ingest("Google Inc. named Sundar Pichai as CEO.")
-        # entities_before included the old 'Google' node; entities_after has
-        # it merged with the new 'Google Inc.' mention rather than as two nodes
-        assert report.entities_merged >= 0
+        # This batch parses 2 raw entities ('Google Inc.', 'Sundar Pichai').
+        # 'Google Inc.' merges into the existing 'Google' node; 'Sundar
+        # Pichai' does not merge with anything. Exactly 1 merge should be
+        # reported -- not 0, which is what the old (buggy) formula of
+        # entities_before - entities_after always produced whenever ingest
+        # grew the graph, silently hiding every merge that happened
+        # alongside growth.
+        assert report.entities_merged == 1
+
+    def test_entities_merged_is_zero_when_nothing_merges(self, patched_exact_match):
+        kb = KnowledgeBase()
+        kb.ingest("Larry Page founded Google.")
+        report = kb.ingest("Sundar Pichai leads Microsoft.")
+        assert report.entities_merged == 0
 
 
 class TestSaveAndLoad:

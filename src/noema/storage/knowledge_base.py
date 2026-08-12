@@ -49,15 +49,26 @@ class IngestReport:
     documents_ingested: int
     entities_before: int
     entities_after: int
+    entities_parsed: int
     relations_before: int
     relations_after: int
 
     @property
     def entities_merged(self) -> int:
-        """How many entities were absorbed into existing/other entities
-        during this ingest, rather than staying as their own node.
+        """How many entities were folded into another entity (by exact-match
+        or embedding-similarity dedup) during this ingest.
+
+        NOT simply `entities_before - entities_after` -- ingest() almost
+        always *grows* the graph (new documents contribute new entities
+        alongside whatever merges also happen), so that difference is
+        usually negative and clamps to a misleading 0 even when real merges
+        occurred. The correct count compares the total RAW candidate pool
+        for this ingest (existing entities + newly parsed ones, before
+        canonicalization) against what remained after: entities_parsed
+        exists specifically so this property can compute that correctly.
         """
-        return max(0, self.entities_before - self.entities_after) if self.entities_before else 0
+        raw_candidate_count = self.entities_before + self.entities_parsed
+        return max(0, raw_candidate_count - self.entities_after)
 
 
 @dataclass
@@ -163,6 +174,7 @@ class KnowledgeBase:
 
         entities_before = len(self._graph.entities)
         relations_before = len(self._graph.relations)
+        entities_parsed = len(new_graph.entities)
 
         combined = _merge_graphs(self._graph, new_graph)
         self._graph = canonicalize(
@@ -176,6 +188,7 @@ class KnowledgeBase:
             documents_ingested=len(docs),
             entities_before=entities_before,
             entities_after=len(self._graph.entities),
+            entities_parsed=entities_parsed,
             relations_before=relations_before,
             relations_after=len(self._graph.relations),
         )
