@@ -32,13 +32,29 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.85
 _WHITESPACE = re.compile(r"\s+")
 _PUNCT = re.compile(r"[^\w\s]")
 
+# Common business-entity suffixes, stripped during normalization so
+# "Google Inc." and "Google" become an exact match before embeddings are
+# even consulted. This was added after a real (non-mocked) run showed
+# all-MiniLM-L6-v2's cosine similarity between "google" and "google inc"
+# fell below the default 0.85 threshold -- relying on embedding similarity
+# alone for this extremely common naming pattern was too fragile. Suffix
+# stripping is deterministic and doesn't depend on any model's idiosyncrasies.
+_BUSINESS_SUFFIXES = {
+    "inc", "incorporated", "corp", "corporation", "llc", "ltd", "limited",
+    "co", "company", "group", "holdings", "plc",
+}
+
 
 def _normalize_name(name: str) -> str:
-    """'Google, Inc.' -> 'google inc' -- for cheap exact-match comparison
+    """'Google, Inc.' -> 'google' -- for cheap exact-match comparison
     before falling back to embeddings.
     """
     name = _PUNCT.sub("", name.lower())
-    return _WHITESPACE.sub(" ", name).strip()
+    name = _WHITESPACE.sub(" ", name).strip()
+    words = name.split()
+    while words and words[-1] in _BUSINESS_SUFFIXES:
+        words.pop()
+    return " ".join(words)
 
 
 @lru_cache(maxsize=2)

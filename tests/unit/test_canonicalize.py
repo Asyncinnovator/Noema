@@ -219,6 +219,65 @@ class TestEventRemapping:
         assert canon.events[0].participant_ids == [canonical_google_id]
 
 
+class TestBusinessSuffixStripping:
+    def test_inc_suffix_merges_via_exact_match_alone(self):
+        """This is the specific case a real (non-mocked) run against the
+        live all-MiniLM-L6-v2 model exposed: cosine similarity between
+        'google' and 'google inc' fell BELOW the default 0.85 threshold, so
+        relying on embeddings alone missed this extremely common pattern.
+        Using an embedding model that gives these two names ZERO similarity
+        proves the merge now happens via suffix-stripped exact match,
+        independent of any embedding model's behavior.
+        """
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Google", EntityType.ORG))
+        graph.add_entity(_entity("Google Inc.", EntityType.ORG))
+
+        class _ZeroSimilarityModel:
+            def encode(self, texts, normalize_embeddings=True):
+                # Orthogonal vectors for every distinct string -- embeddings
+                # contribute nothing to this merge if it succeeds.
+                base = {t: i for i, t in enumerate(dict.fromkeys(texts))}
+                dim = max(len(base), 2)
+                vecs = np.zeros((len(texts), dim), dtype="float32")
+                for i, t in enumerate(texts):
+                    vecs[i, base[t]] = 1.0
+                return vecs
+
+        with patch.object(dedup, "_load_model", return_value=_ZeroSimilarityModel()):
+            canon = dedup.canonicalize(graph)
+
+        assert len(canon.entities) == 1
+
+    def test_corp_suffix_merges(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Acme", EntityType.ORG))
+        graph.add_entity(_entity("Acme Corp", EntityType.ORG))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 1
+
+    def test_llc_suffix_merges(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Acme", EntityType.ORG))
+        graph.add_entity(_entity("Acme LLC", EntityType.ORG))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 1
+
+    def test_suffix_stripping_does_not_cause_false_merge(self, patched_embedding_model):
+        # "Acme Inc." and "Beta Inc." must NOT merge just because they
+        # share a suffix -- only the base name needs to match.
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Acme Inc.", EntityType.ORG))
+        graph.add_entity(_entity("Beta Inc.", EntityType.ORG))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 2
+
+    def test_suffix_stripping_scoped_to_business_words_only(self, patched_embedding_model):
+        # A name that merely CONTAINS a word resembling a suffix elsewhere
+        # in the name (not as the trailing word) must not be altered.
+        assert dedup._normalize_name("Company House") == "company house"
+
+
 class TestFullPipelineIntegration:
     def test_realistic_multi_document_scenario(self, patched_embedding_model):
         """Three documents mention 'Google' -- after canonicalization it
