@@ -27,6 +27,47 @@ class TestActiveVoiceSVO:
         assert relations == []
 
 
+class TestObjectComplementAsRole:
+    """'X named/appointed Y as Z' -- an object-complement attached to the
+    verb via "as" that carries role information a plain SVO reading would
+    silently drop entirely. Added after a real (non-mocked) run surfaced
+    this exact gap: "Google Inc. named Sundar Pichai as CEO." previously
+    only produced the uninformative name(Google Inc., Sundar Pichai),
+    losing "as CEO" -- a query like "who is the CEO?" had nothing to match.
+    """
+
+    def test_named_as_role_produces_role_of_relation(self, make_document):
+        doc = make_document("Google Inc. named Sundar Pichai as CEO.")
+        entities = extract_entities(doc)
+        relations = extract_relations(doc, entities)
+        triples = _relation_triples(doc, entities, relations)
+        assert ("Sundar Pichai", "ceo_of", "Google Inc.") in triples
+
+    def test_plain_svo_relation_still_also_produced(self, make_document):
+        # The role-labeled relation is ADDITIONAL, not a replacement --
+        # both facts are true and both should be present.
+        doc = make_document("Google Inc. named Sundar Pichai as CEO.")
+        entities = extract_entities(doc)
+        relations = extract_relations(doc, entities)
+        triples = _relation_triples(doc, entities, relations)
+        assert ("Google Inc.", "name", "Sundar Pichai") in triples
+
+    def test_appointed_as_role_pattern(self, make_document):
+        doc = make_document("Microsoft appointed Larry Page as chairman.")
+        entities = extract_entities(doc)
+        relations = extract_relations(doc, entities)
+        triples = _relation_triples(doc, entities, relations)
+        assert ("Larry Page", "chairman_of", "Microsoft") in triples
+
+    def test_plain_dobj_without_as_clause_unaffected(self, make_document):
+        # No "as X" complement present -- must not spuriously add a role_of
+        # relation just because the sentence has a dobj.
+        doc = make_document("Larry Page founded Google.")
+        entities = extract_entities(doc)
+        relations = extract_relations(doc, entities)
+        assert all("_of" not in r.predicate for r in relations)
+
+
 class TestPassiveWithAgent:
     def test_passive_agent_is_reoriented_to_logical_direction(self, make_document):
         doc = make_document("Google was founded by Larry Page in 1998.")

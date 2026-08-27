@@ -162,6 +162,20 @@ def extract_relations(
                     s_ent, o_ent = _resolve_entity(s, index), _resolve_entity(o, index)
                     if s_ent and o_ent and s_ent.id != o_ent.id:
                         _add_or_merge(relations, s_ent, predicate, o_ent, mention)
+
+            
+            as_prep = next(
+                (c for c in root.children if c.dep_ == "prep" and c.text.lower() == "as"), None
+            )
+            if as_prep is not None:
+                role_pobj = next((c for c in as_prep.children if c.dep_ == "pobj"), None)
+                if role_pobj is not None:
+                    role_predicate = f"{_normalize_predicate(role_pobj.text)}_of"
+                    for s in _expand_conjuncts(dobj):
+                        for o in _expand_conjuncts(subj_token):
+                            s_ent, o_ent = _resolve_entity(s, index), _resolve_entity(o, index)
+                            if s_ent and o_ent and s_ent.id != o_ent.id:
+                                _add_or_merge(relations, s_ent, role_predicate, o_ent, mention)
             continue
 
         attr = next((c for c in root.children if c.dep_ == "attr"), None)
