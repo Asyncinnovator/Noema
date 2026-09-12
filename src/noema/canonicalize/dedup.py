@@ -24,7 +24,7 @@ from functools import lru_cache
 from sentence_transformers import SentenceTransformer
 
 from noema.graph.builder import SemanticGraph
-from noema.schema import Entity, Event, Relation
+from noema.schema import Entity, EntityType, Event, Relation
 
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_SIMILARITY_THRESHOLD = 0.85
@@ -86,12 +86,55 @@ class _UnionFind:
         return clusters
 
 
+def _is_surname_match(short_name: str, long_name: str) -> bool:
+    """True if `short_name` is a single word matching the last word of
+    `long_name` -- e.g. 'chen' matching the last word of 'david chen'.
+
+    Covers a common real-world pattern a live run surfaced: a person
+    introduced by full name once, then referred to by surname alone
+    afterward ("David Chen remained CTO... Marsh and Chen met while
+    studying..."). spaCy's NER correctly tags both spans as PERSON, but has
+    no notion that they're the same person -- that's exactly what this
+    catches, deterministically, without needing coreference resolution.
+
+    Deliberately scoped to EntityType.PERSON only (see canonicalize()) --
+    the same heuristic applied to ORG names would be far riskier: "Labs"
+    alone should NOT automatically match "Bright Sensor Labs", since
+    generic trailing words are common in company names in a way they
+    aren't in personal names.
+    """
+    short_words = short_name.split()
+    long_words = long_name.split()
+    return len(short_words) == 1 and len(long_words) > 1 and short_words[0] == long_words[-1]
+
+
 def _merge_cluster(entities: list[Entity]) -> Entity:
     """Collapse a cluster of duplicate Entity objects into one canonical
-    Entity. The most-attested surface form (most mentions) becomes the
-    canonical id/name; every other name in the cluster becomes an alias.
+    Entity.
+
+    Canonical selection differs by type, because "most complete name" and
+    "most useful canonical name" point in opposite directions depending on
+    what kind of entity it is:
+
+      - PERSON: prefer the most COMPLETE name (most words) first, mention
+        count as a tiebreak only. A shorthand surname-only mention ("Chen")
+        can easily accumulate more raw mentions across a document than the
+        full name ("David Chen") that introduced it (see
+        _is_surname_match), so mention count alone would pick the LESS
+        specific name as canonical -- the opposite of useful.
+      - Everything else (ORG, etc.): prefer the most-ATTESTED name (most
+        mentions), matching how these entities are actually referred to in
+        practice. "Google" (the common brand name) should stay canonical
+        over "Google Inc." (the longer legal name) even though the latter
+        is technically more "complete" -- completeness isn't the useful
+        signal here the way it is for personal names.
     """
-    canonical = max(entities, key=lambda e: len(e.mentions))
+    entity_type = entities[0].type
+    if entity_type == EntityType.PERSON:
+        canonical = max(entities, key=lambda e: (len(e.name.split()), len(e.mentions)))
+    else:
+        canonical = max(entities, key=lambda e: len(e.mentions))
+
     merged_mentions = []
     merged_aliases: list[str] = []
     seen = set()
@@ -121,12 +164,18 @@ def canonicalize(
 ) -> SemanticGraph:
     """Return a new SemanticGraph with duplicate entities merged.
 
-    Two passes, both scoped within each EntityType (a PERSON and an ORG
+    Three passes, all scoped within each EntityType (a PERSON and an ORG
     never merge, regardless of name similarity):
 
       1. Exact match on normalized name -- cheap, high-precision, catches
          the common case ("Google" repeated verbatim across documents).
-      2. Embedding similarity between the remaining distinct names, via
+      2. Surname matching, PERSON entities only -- "Chen" matching the last
+         word of "David Chen" (see _is_surname_match). Deterministic, no
+         model call, and catches a pattern embedding similarity alone
+         doesn't reliably catch (a bare surname and a full name aren't
+         necessarily close in embedding space, even though they're
+         obviously the same person to a reader).
+      3. Embedding similarity between the remaining distinct names, via
          cosine similarity over sentence-transformers embeddings -- catches
          near-duplicates exact match misses, e.g. "Google" / "Google Inc."
     """
@@ -137,7 +186,7 @@ def canonicalize(
     id_remap: dict[str, str] = {}
     canonical_entities: dict[str, Entity] = {}
 
-    for group in by_type.values():
+    for entity_type, group in by_type.items():
         uf = _UnionFind([e.id for e in group])
 
         by_normalized: dict[str, list[Entity]] = defaultdict(list)
@@ -148,6 +197,15 @@ def canonicalize(
                 uf.union(same_name_entities[0].id, entity.id)
 
         distinct_names = list(by_normalized.keys())
+
+        if entity_type == EntityType.PERSON:
+            for name_a in distinct_names:
+                for name_b in distinct_names:
+                    if name_a == name_b:
+                        continue
+                    if _is_surname_match(name_a, name_b):
+                        uf.union(by_normalized[name_a][0].id, by_normalized[name_b][0].id)
+
         if len(distinct_names) > 1:
             model = _load_model(model_name)
             embeddings = model.encode(distinct_names, normalize_embeddings=True)

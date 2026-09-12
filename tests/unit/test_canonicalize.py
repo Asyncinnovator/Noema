@@ -278,6 +278,93 @@ class TestBusinessSuffixStripping:
         assert dedup._normalize_name("Company House") == "company house"
 
 
+class TestSurnameMatching:
+    def test_bare_surname_merges_with_full_name(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Chen", EntityType.PERSON))
+        graph.add_entity(_entity("David Chen", EntityType.PERSON))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 1
+
+    def test_full_name_stays_canonical_even_with_fewer_mentions(self):
+        # This is the specific regression a real run surfaced: a bare
+        # surname ("Chen") accumulated more raw mentions across a document
+        # than the full name ("David Chen") that introduced it. Canonical
+        # selection must still prefer the full name for PERSON entities.
+        graph = SemanticGraph()
+        chen = _entity("Chen", EntityType.PERSON, mentions=8)
+        david_chen = _entity("David Chen", EntityType.PERSON, mentions=3)
+        graph.add_entity(chen)
+        graph.add_entity(david_chen)
+
+        class _ZeroSimilarityModel:
+            def encode(self, texts, normalize_embeddings=True):
+                base = {t: i for i, t in enumerate(dict.fromkeys(texts))}
+                dim = max(len(base), 2)
+                vecs = np.zeros((len(texts), dim), dtype="float32")
+                for i, t in enumerate(texts):
+                    vecs[i, base[t]] = 1.0
+                return vecs
+
+        with patch.object(dedup, "_load_model", return_value=_ZeroSimilarityModel()):
+            canon = dedup.canonicalize(graph)
+
+        assert canon.entities[0].name == "David Chen"
+        assert "Chen" in canon.entities[0].aliases
+
+    def test_two_different_surnames_do_not_cross_merge(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Chen", EntityType.PERSON))
+        graph.add_entity(_entity("Elena Marsh", EntityType.PERSON))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 2
+
+    def test_unrelated_single_name_without_a_match_is_untouched(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Sarah Kim", EntityType.PERSON))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 1
+        assert canon.entities[0].name == "Sarah Kim"
+
+    def test_surname_matching_not_applied_to_org_type(self, patched_embedding_model):
+        # The same word-suffix pattern on an ORG name must NOT trigger a
+        # merge -- "Labs" alone should not match "Bright Sensor Labs".
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Labs", EntityType.ORG))
+        graph.add_entity(_entity("Bright Sensor Labs", EntityType.ORG))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 2
+
+    def test_org_canonical_selection_still_prefers_most_mentions(self, patched_embedding_model):
+        # Confirms the type-scoped fix didn't regress the ORG case: the
+        # more-attested short brand name ("Google") should stay canonical
+        # over the longer legal name ("Google Inc."), unlike PERSON.
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Google", EntityType.ORG, mentions=5))
+        graph.add_entity(_entity("Google Inc.", EntityType.ORG, mentions=1))
+        canon = dedup.canonicalize(graph)
+        assert canon.entities[0].name == "Google"
+
+
+class TestIsSurnameMatch:
+    def test_matching_surname(self):
+        assert dedup._is_surname_match("chen", "david chen") is True
+
+    def test_non_matching_single_word(self):
+        assert dedup._is_surname_match("smith", "david chen") is False
+
+    def test_both_multiword_is_not_a_surname_match(self):
+        assert dedup._is_surname_match("david chen", "david chen jr") is False
+
+    def test_both_single_word_is_not_a_surname_match(self):
+        assert dedup._is_surname_match("chen", "page") is False
+
+    def test_surname_matching_first_word_does_not_match(self):
+        # "david" is the FIRST word of "david chen", not the last --
+        # must not match (avoids matching on given names too liberally).
+        assert dedup._is_surname_match("david", "david chen") is False
+
+
 class TestFullPipelineIntegration:
     def test_realistic_multi_document_scenario(self, patched_embedding_model):
         """Three documents mention 'Google' -- after canonicalization it
