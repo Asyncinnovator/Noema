@@ -12,6 +12,7 @@ dependencies = [
     "rich>=15.0.0",
     "sentence-transformers>=5.7.0",
     "spacy>=3.8.14",
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "tiktoken>=0.13.0",
     "torch>=2.5.0",
     "transformers>=4.40,<5.0",
@@ -22,6 +23,10 @@ dependencies = [
 [project.optional-dependencies]
 advanced-nlp = [
     "fastcoref>=2.1.6",
+]
+
+compare-models = [
+    "en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl",
 ]
 
 [dependency-groups]
@@ -41,6 +46,13 @@ explicit = true
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# Required for the en-core-web-sm / en-core-web-md direct-URL dependencies
+# above -- hatchling disallows "name @ url" style dependencies by default
+# (a safety measure against unreviewable install sources), and refuses to
+# build the package at all without this explicit opt-in.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/noema"]

@@ -284,6 +284,65 @@ class TestRetrieveBasic:
         assert result.fact_matches == []
 
 
+class TestSpacyModelSelection:
+    def test_default_spacy_model(self):
+        kb = KnowledgeBase()
+        assert kb._spacy_model == "en_core_web_sm"
+
+    def test_custom_spacy_model_stored(self):
+        kb = KnowledgeBase(spacy_model="en_core_web_md")
+        assert kb._spacy_model == "en_core_web_md"
+
+    def test_spacy_model_forwarded_to_extract_entities_during_ingest(self, patched_exact_match):
+        kb = KnowledgeBase(spacy_model="en_core_web_md")
+        with patch(
+            "noema.storage.knowledge_base.extract_entities", return_value=[]
+        ) as entities_spy, patch(
+            "noema.storage.knowledge_base.extract_relations", return_value=[]
+        ):
+            kb.ingest("Larry Page founded Google.")
+        _, kwargs = entities_spy.call_args
+        assert kwargs.get("model_name") == "en_core_web_md"
+
+    def test_spacy_model_forwarded_to_extract_relations_during_ingest(self, patched_exact_match):
+        kb = KnowledgeBase(spacy_model="en_core_web_md")
+        with patch(
+            "noema.storage.knowledge_base.extract_entities", return_value=[]
+        ), patch(
+            "noema.storage.knowledge_base.extract_relations", return_value=[]
+        ) as relations_spy:
+            kb.ingest("Larry Page founded Google.")
+        _, kwargs = relations_spy.call_args
+        assert kwargs.get("model_name") == "en_core_web_md"
+
+    def test_spacy_model_round_trips_through_save_and_load(self, tmp_path):
+        with patch.object(dedup, "_load_model", return_value=_ExactMatchModel()), \
+             patch.object(bundle, "_load_model", return_value=_ExactMatchModel()), \
+             patch("noema.storage.knowledge_base.extract_entities", return_value=[]), \
+             patch("noema.storage.knowledge_base.extract_relations", return_value=[]):
+            kb = KnowledgeBase(spacy_model="en_core_web_md")
+            kb.ingest("Larry Page founded Google.")
+            path = str(tmp_path / "kb.noema")
+            kb.save(path)
+
+            loaded_kb = KnowledgeBase.load(path)
+
+        assert loaded_kb._spacy_model == "en_core_web_md"
+
+    def test_missing_spacy_model_in_old_bundle_falls_back_to_default(self, tmp_path):
+        # A bundle saved before spacy_model existed in the manifest (or
+        # saved with spacy_model=None) must still load, defaulting to the
+        # standard model rather than crashing on a missing manifest key.
+        with patch.object(dedup, "_load_model", return_value=_ExactMatchModel()), \
+             patch.object(bundle, "_load_model", return_value=_ExactMatchModel()):
+            kb = KnowledgeBase()  # default spacy_model
+            kb.ingest("Larry Page founded Google.")
+            path = str(tmp_path / "kb.noema")
+            kb.save(path)
+            loaded_kb = KnowledgeBase.load(path)
+        assert loaded_kb._spacy_model == "en_core_web_sm"
+
+
 class TestFactIndexCaching:
     def test_index_built_lazily_not_at_construction(self, patched_retrieval_stack):
         kb = KnowledgeBase()
@@ -319,4 +378,4 @@ class TestFactIndexCaching:
         with patch.object(bundle, "_load_model") as build_model_mock:
             loaded_kb = KnowledgeBase.load(path)
         assert build_model_mock.called is False
-        assert loaded_kb._fact_index is not None
+        assert loaded_kb._fact_index is not None                                             

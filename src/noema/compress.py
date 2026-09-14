@@ -29,6 +29,7 @@ from noema.canonicalize.dedup import canonicalize
 from noema.graph.builder import SemanticGraph
 from noema.notation.decoder import decode
 from noema.notation.encoder import encode_graph
+from noema.parser.entities import DEFAULT_MODEL as SPACY_DEFAULT_MODEL
 from noema.parser.entities import extract_entities
 from noema.parser.relations import extract_relations
 from noema.schema import Document, ParsedDocument
@@ -110,6 +111,7 @@ def compress(
     similarity_threshold: float | None = None,
     validation_threshold: float = DEFAULT_PASS_THRESHOLD,
     token_model: str = DEFAULT_TOKEN_MODEL,
+    spacy_model: str = SPACY_DEFAULT_MODEL,
 ) -> CompressResult:
     """Compress `text` into compact notation, with a round-trip confidence score.
 
@@ -118,10 +120,24 @@ def compress(
     incremental-update path). `similarity_threshold` is passed straight
     through to canonicalize.dedup if provided; leaving it as None uses that
     module's own default.
+
+    `spacy_model` selects which spaCy pipeline does NER and dependency
+    parsing -- any installed spaCy model name works here (a different
+    size, e.g. "en_core_web_trf" for higher accuracy, or a different
+    language, e.g. "de_core_news_sm" or "fr_core_news_sm"). See
+    parser.entities for how NER labels from non-English models get mapped
+    onto EntityType, and IMPORTANT: the relation-extraction PATTERNS in
+    parser.relations still contain English-specific lexical triggers (the
+    literal word "as" for object-complement roles, an English preposition
+    list for humanizing notation) -- switching spacy_model makes entity
+    extraction genuinely multilingual-capable, but relation extraction
+    quality on non-English text is unverified and likely to catch fewer
+    relations than it does for English, since those specific patterns
+    were only ever tuned and tested against English syntax.
     """
     document = Document(text=text)
-    entities = extract_entities(document)
-    relations = extract_relations(document, entities)
+    entities = extract_entities(document, model_name=spacy_model)
+    relations = extract_relations(document, entities, model_name=spacy_model)
 
     graph = SemanticGraph()
     graph.add_document(ParsedDocument(document=document, entities=entities, relations=relations))

@@ -358,6 +358,22 @@ wheels = [
 ]
 
 [[package]]
+name = "en-core-web-md"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl", hash = "sha256:5e6329fe3fecedb1d1a02c3ea2172ee0fede6cea6e4aefb6a02d832dba78a310" },
+]
+
+[[package]]
+name = "en-core-web-sm"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl", hash = "sha256:1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85" },
+]
+
+[[package]]
 name = "faiss-cpu"
 version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -851,6 +867,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "en-core-web-sm" },
     { name = "faiss-cpu" },
     { name = "networkx" },
     { name = "pydantic" },
@@ -868,6 +885,9 @@ dependencies = [
 advanced-nlp = [
     { name = "fastcoref" },
 ]
+compare-models = [
+    { name = "en-core-web-md" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -878,6 +898,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
+    { name = "en-core-web-md", marker = "extra == 'compare-models'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" },
+    { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "faiss-cpu", specifier = ">=1.15.0" },
     { name = "fastcoref", marker = "extra == 'advanced-nlp'", specifier = ">=2.1.6" },
     { name = "networkx", specifier = ">=3.6.1" },
@@ -890,7 +912,7 @@ requires-dist = [
     { name = "transformers", specifier = ">=4.40,<5.0" },
     { name = "typer", specifier = ">=0.27.1" },
 ]
-provides-extras = ["advanced-nlp"]
+provides-extras = ["advanced-nlp", "compare-models"]
 
 [package.metadata.requires-dev]
 dev = [

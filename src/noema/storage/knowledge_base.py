@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from noema.canonicalize.dedup import DEFAULT_SIMILARITY_THRESHOLD, canonicalize
 from noema.graph.builder import SemanticGraph
 from noema.notation.decoder import decode
+from noema.parser.entities import DEFAULT_MODEL as SPACY_DEFAULT_MODEL
 from noema.parser.entities import extract_entities
 from noema.parser.relations import extract_relations
 from noema.retrieval.assemble import DEFAULT_MAX_TOKENS, DEFAULT_TOKEN_MODEL, assemble
@@ -130,10 +131,17 @@ class KnowledgeBase:
         self,
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        spacy_model: str = SPACY_DEFAULT_MODEL,
     ) -> None:
         self._graph = SemanticGraph()
         self._embedding_model = embedding_model
         self._similarity_threshold = similarity_threshold
+        # Selects which spaCy pipeline does NER and dependency parsing for
+        # every document this KnowledgeBase ever ingests -- see
+        # compress()'s spacy_model docstring for what switching this does
+        # and does not buy you (entity extraction becomes genuinely
+        # multilingual-capable; relation extraction stays English-tuned).
+        self._spacy_model = spacy_model
 
         # Cached fact (relation) embedding index for retrieve(). Lazily
         # built on first retrieve() call, invalidated on every ingest()
@@ -166,8 +174,8 @@ class KnowledgeBase:
 
         new_graph = SemanticGraph()
         for document in docs:
-            entities = extract_entities(document)
-            relations = extract_relations(document, entities)
+            entities = extract_entities(document, model_name=self._spacy_model)
+            relations = extract_relations(document, entities, model_name=self._spacy_model)
             new_graph.add_document(
                 ParsedDocument(document=document, entities=entities, relations=relations)
             )
@@ -195,13 +203,18 @@ class KnowledgeBase:
 
     def save(self, path: str) -> None:
         """Write this knowledge base to a .noema bundle at `path`."""
-        save_bundle(path, self._graph, model_name=self._embedding_model)
+        save_bundle(
+            path, self._graph, model_name=self._embedding_model, spacy_model=self._spacy_model
+        )
 
     @classmethod
     def load(cls, path: str) -> "KnowledgeBase":
         """Load a knowledge base from a .noema bundle at `path`."""
         loaded = load_bundle(path)
-        kb = cls(embedding_model=loaded.manifest.get("embedding_model", DEFAULT_EMBEDDING_MODEL))
+        kb = cls(
+            embedding_model=loaded.manifest.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
+            spacy_model=loaded.manifest.get("spacy_model") or SPACY_DEFAULT_MODEL,
+        )
         kb._graph = loaded.graph
         # The bundle already carried a fully-built fact index -- reuse it
         # directly rather than re-embedding every fact via _ensure_fact_index()

@@ -162,6 +162,20 @@ class TestSaveAndLoadBundle:
             loaded = bundle.load_bundle(tmp_bundle_path)
         assert loaded.manifest["schema_version"] == bundle.SCHEMA_VERSION
 
+    def test_manifest_records_spacy_model_when_provided(self, tmp_bundle_path):
+        graph = _build_graph()
+        with patch.object(bundle, "_load_model", return_value=_FakeEmbeddingModel()):
+            bundle.save_bundle(tmp_bundle_path, graph, spacy_model="en_core_web_md")
+            loaded = bundle.load_bundle(tmp_bundle_path)
+        assert loaded.manifest["spacy_model"] == "en_core_web_md"
+
+    def test_manifest_spacy_model_is_none_when_not_provided(self, tmp_bundle_path):
+        graph = _build_graph()
+        with patch.object(bundle, "_load_model", return_value=_FakeEmbeddingModel()):
+            bundle.save_bundle(tmp_bundle_path, graph)
+            loaded = bundle.load_bundle(tmp_bundle_path)
+        assert loaded.manifest["spacy_model"] is None
+
     def test_source_document_ids_collected_from_mentions(self, tmp_bundle_path):
         graph = SemanticGraph()
         entity = Entity(name="Google", type=EntityType.ORG)

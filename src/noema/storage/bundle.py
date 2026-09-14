@@ -151,8 +151,21 @@ def build_fact_index(
 # -- bundle pack / unpack --------------------------------------------------
 
 
-def save_bundle(path: str, graph: SemanticGraph, model_name: str = DEFAULT_EMBEDDING_MODEL) -> None:
-    """Write a SemanticGraph to a .noema bundle at `path`."""
+def save_bundle(
+    path: str,
+    graph: SemanticGraph,
+    model_name: str = DEFAULT_EMBEDDING_MODEL,
+    spacy_model: str | None = None,
+) -> None:
+    """Write a SemanticGraph to a .noema bundle at `path`.
+
+    `spacy_model` is recorded in the manifest purely as metadata about
+    which spaCy pipeline produced this graph's entities/relations -- this
+    function doesn't parse anything itself, so it can't use or validate
+    that choice, only note it down so KnowledgeBase.load() can restore the
+    same setting for future ingests instead of silently reverting to
+    whatever the default happens to be.
+    """
     fact_ids, embeddings, index = build_fact_index(graph, model_name)
 
     source_document_ids = sorted(
@@ -163,6 +176,7 @@ def save_bundle(path: str, graph: SemanticGraph, model_name: str = DEFAULT_EMBED
         "schema_version": SCHEMA_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "embedding_model": model_name,
+        "spacy_model": spacy_model,
         "embedding_dim": embeddings.shape[1] if embeddings.size else DEFAULT_EMBEDDING_DIM,
         "entity_count": len(graph.entities),
         "relation_count": len(graph.relations),

@@ -117,6 +117,29 @@ class TestCompressPipeline:
         assert result.notation.count("Google") == 1  # one entity line, referenced by id elsewhere
 
 
+class TestSpacyModelSelection:
+    def test_spacy_model_forwarded_to_extract_entities(self, patched_pipeline):
+        with patch("noema.compress.extract_entities", return_value=[]) as entities_spy, \
+             patch("noema.compress.extract_relations", return_value=[]):
+            compress("Larry Page founded Google.", spacy_model="en_core_web_md")
+        _, kwargs = entities_spy.call_args
+        assert kwargs.get("model_name") == "en_core_web_md"
+
+    def test_spacy_model_forwarded_to_extract_relations(self, patched_pipeline):
+        with patch("noema.compress.extract_entities", return_value=[]), \
+             patch("noema.compress.extract_relations", return_value=[]) as relations_spy:
+            compress("Larry Page founded Google.", spacy_model="en_core_web_md")
+        _, kwargs = relations_spy.call_args
+        assert kwargs.get("model_name") == "en_core_web_md"
+
+    def test_default_spacy_model_is_en_core_web_sm(self, patched_pipeline):
+        with patch("noema.compress.extract_entities", return_value=[]) as entities_spy, \
+             patch("noema.compress.extract_relations", return_value=[]):
+            compress("Larry Page founded Google.")
+        _, kwargs = entities_spy.call_args
+        assert kwargs.get("model_name") == "en_core_web_sm"
+
+
 class TestCompressWithNoExtractableFacts:
     def test_text_with_no_entities_produces_empty_notation(self, patched_pipeline):
         result = compress("the quick brown fox jumps over the lazy dog")
