@@ -6,27 +6,51 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.13"
 dependencies = [
+    # Core pipeline: compress() + KnowledgeBase (parsing, canonicalization,
+    # notation, storage, retrieval). torch/sentence-transformers are required,
+    # not optional -- semantic dedup and vector retrieval need them.
     "faiss-cpu>=1.15.0",
     "networkx>=3.6.1",
     "pydantic>=2.13.4",
     "rich>=15.0.0",
     "sentence-transformers>=5.7.0",
     "spacy>=3.8.14",
+    # Direct-URL dep, not a separate `spacy download` step -- `uv sync`
+    # exact-syncs and removes anything not declared here (astral-sh/uv#12481).
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "tiktoken>=0.13.0",
     "torch>=2.5.0",
+    # Pinned <5.0: transformers 5.x breaks fastcoref's model loading.
     "transformers>=4.40,<5.0",
     "typer>=0.27.1",
+    # Explicit: spacy.cli imports click directly, but neither spacy nor
+    # typer declares it anymore (explosion/spaCy#13971).
     "click>=8.0",
 ]
 
 [project.optional-dependencies]
+# coref, transformer relation extraction (REBEL), NLI validation.
+# Not used by compress()/KnowledgeBase. ~2.5GB of model weights on first use.
 advanced-nlp = [
     "fastcoref>=2.1.6",
 ]
 
+# For compare_spacy_models.py only.
 compare-models = [
     "en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl",
+]
+
+# noema.integrations.langchain / .llamaindex / .tokens. Each module
+# imports its third-party package lazily -- only instantiating the retriever
+# classes requires the matching extra.
+langchain = [
+    "langchain-core>=0.3.0",
+]
+llamaindex = [
+    "llama-index-core>=0.12.0",
+]
+anthropic = [
+    "anthropic>=0.40.0",
 ]
 
 [dependency-groups]
@@ -48,10 +72,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
-# Required for the en-core-web-sm / en-core-web-md direct-URL dependencies
-# above -- hatchling disallows "name @ url" style dependencies by default
-# (a safety measure against unreviewable install sources), and refuses to
-# build the package at all without this explicit opt-in.
+# Required for the en-core-web-sm/-md direct-URL dependencies above.
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
