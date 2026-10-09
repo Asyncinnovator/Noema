@@ -102,8 +102,8 @@ class TestResolveCoreferences:
 
 class TestSelectCanonicalMention:
     def test_prefers_proper_name_over_longer_generic_phrase(self):
-        # The real bug this test guards against: "The company" is longer
-        # than "Google" but far less specific -- must not be picked.
+        # "The company" is longer than "Google" but far less specific --
+        # must not be picked.
         result = coref._select_canonical_mention(["Google", "its", "The company"])
         assert result == "Google"
 
@@ -145,9 +145,9 @@ class TestLooksLikeProperName:
 
 class TestCorefImprovesRelationRecall:
     def test_pronoun_subject_relation_recovered_after_resolution(self):
-        """The actual point of this module: a relation invisible to the
-        rule-based extractor before resolution (subject 'It' isn't an NER
-        entity) becomes extractable after resolution.
+        """A relation invisible to the rule-based extractor before
+        resolution (subject 'It' isn't an NER entity) becomes extractable
+        after resolution.
         """
         from noema.parser.entities import extract_entities
         from noema.parser.relations import extract_relations

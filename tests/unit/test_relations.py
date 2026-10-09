@@ -30,10 +30,7 @@ class TestActiveVoiceSVO:
 class TestObjectComplementAsRole:
     """'X named/appointed Y as Z' -- an object-complement attached to the
     verb via "as" that carries role information a plain SVO reading would
-    silently drop entirely. Added after a real (non-mocked) run surfaced
-    this exact gap: "Google Inc. named Sundar Pichai as CEO." previously
-    only produced the uninformative name(Google Inc., Sundar Pichai),
-    losing "as CEO" -- a query like "who is the CEO?" had nothing to match.
+    drop entirely.
     """
 
     def test_named_as_role_produces_role_of_relation(self, make_document):

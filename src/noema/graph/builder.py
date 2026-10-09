@@ -1,15 +1,10 @@
 """Assembles entities, relations, and events into an in-memory semantic graph.
 
 This is the raw, pre-canonicalization graph: each ParsedDocument contributes
-its own entities with their own ids, so the same real-world thing mentioned
-in two documents ("Google" in doc A, "Google" in doc B) becomes two separate
-nodes here. Merging those into one canonical node is the canonicalize
-subpackage's job (Phase 1 basic version, Phase 5 stronger version) -- this
-module only builds the structure the canonicalizer will operate on.
-
-Uses networkx.MultiDiGraph so that multiple distinct relations can exist
-between the same pair of entities (e.g. "worked_at" and "board_member_of"
-both holding between the same two nodes) without overwriting each other.
+entities with their own ids, so the same real-world thing mentioned in two
+documents starts out as two separate nodes (merged later by canonicalize).
+Uses networkx.MultiDiGraph so multiple distinct relations can exist between
+the same pair of entities without overwriting each other.
 """
 
 from __future__ import annotations
@@ -27,15 +22,11 @@ EVENT_KIND = "event"
 class SemanticGraph:
     """Thin, typed wrapper around a networkx.MultiDiGraph.
 
-    Nodes are entities and events, keyed by their schema id. Edges are:
-      - relation edges: subject_id -> object_id, keyed by relation.id
-      - participation edges: participant_id -> event.id, keyed by event.id,
-        representing "this entity took part in this event"
-
-    Pydantic objects are stored whole as node/edge data (under the "data"
-    attribute) so nothing is lost converting into graph form -- the graph is
-    a view/index over the same Entity/Relation/Event objects, not a lossy
-    projection of them.
+    Nodes are entities and events, keyed by their schema id. Edges are
+    relation edges (subject_id -> object_id, keyed by relation.id) and
+    participation edges (participant_id -> event.id, keyed by event.id).
+    Entity/Relation/Event objects are stored whole as node/edge data under
+    the "data" attribute.
     """
 
     def __init__(self) -> None:
@@ -51,11 +42,10 @@ class SemanticGraph:
             self.add_relation(relation)
         for event in parsed.events:
             self.add_event(event)
-  
+
     def add_entity(self, entity: Entity) -> None:
         if self.graph.has_node(entity.id):
-            # Same id re-added (e.g. document processed twice) -- merge
-            # mentions rather than duplicate the node.
+            # Same id re-added -- merge mentions rather than duplicate the node.
             existing: Entity = self.graph.nodes[entity.id]["data"]
             existing.mentions.extend(entity.mentions)
             for alias in entity.aliases:
@@ -139,11 +129,7 @@ class SemanticGraph:
 
     def neighbors(self, entity_id: str, hops: int = 1) -> list[Entity]:
         """Entities reachable within `hops` relation/participation edges,
-        treating the graph as undirected for traversal purposes (a fact is
-        relevant regardless of which side of the edge you start from).
-
-        This is the primitive the retrieval layer (Phase 4) builds on for
-        "vector search -> graph expansion" sub-graph assembly.
+        treating the graph as undirected for traversal purposes.
         """
         if entity_id not in self.graph:
             return []

@@ -1,21 +1,8 @@
-"""noema.compress(text): the one-off text compression entry point.
+"""One-off text compression entry point: noema.compress(text).
 
-Wires together every piece built so far into the pipeline described in the
-project plan:
-
-    text -> parse (entities, relations)
-         -> build graph
-         -> canonicalize (dedup, even within a single text -- "Google" and
-            "Google Inc." mentioned in the same paragraph should still
-            collapse to one node)
-         -> encode to notation
-         -> decode back to natural language
-         -> round-trip validate (confidence)
-         -> count tokens, compute saved_percent
-
-Returns a CompressResult rather than a bare tuple/dict so fields are named
-and typed at the call site: `result.notation`, `result.confidence`, etc.,
-matching the API shown in the project plan's usage examples.
+Pipeline: parse (entities, relations) -> build graph -> canonicalize
+(dedup) -> encode to notation -> decode back to text -> round-trip
+validate -> count tokens and compute saved_percent.
 """
 
 from __future__ import annotations
@@ -40,13 +27,8 @@ DEFAULT_TOKEN_MODEL = "cl100k_base"
 
 @dataclass
 class CompressResult:
-    """Result of noema.compress(text).
-
-    `decoded_text` is included even though the project plan's usage example
-    only shows `.notation`, `.saved_percent`, and `.confidence` -- it's what
-    `.confidence` was actually scored against, and surfacing it costs
-    nothing while making a low-confidence result debuggable (see what the
-    notation decoded back into, not just the number).
+    """Result of noema.compress(text). `decoded_text` is what `.confidence`
+    was scored against, useful for debugging low-confidence results.
     """
 
     notation: str
@@ -63,13 +45,7 @@ def _load_token_encoding(model: str = DEFAULT_TOKEN_MODEL) -> tiktoken.Encoding:
 
 
 def count_tokens(text: str, model: str = DEFAULT_TOKEN_MODEL) -> int:
-    """Token count for `text` under the given tiktoken encoding.
-
-    Empty/whitespace-only text short-circuits to 0 without invoking the
-    tokenizer -- consistent with validator.roundtrip's empty-text
-    short-circuit, and avoids a tokenizer call for a case with an obvious
-    answer.
-    """
+    """Token count for `text` under the given tiktoken encoding."""
     if not text.strip():
         return 0
     encoding = _load_token_encoding(model)
@@ -79,23 +55,10 @@ def count_tokens(text: str, model: str = DEFAULT_TOKEN_MODEL) -> int:
 def _saved_percent(original_tokens: int, notation_tokens: int) -> float:
     """Percentage of tokens saved by notation vs. the original text.
 
-    Two cases are special-cased rather than left to the raw formula:
-
-      - original_tokens == 0: nothing to save a percentage of.
-      - notation_tokens == 0 (with nonzero original_tokens): the raw formula
-        would report 100% "savings", which is mathematically correct but
-        misleading -- an empty notation here means no facts were extractable
-        from the text at all, i.e. an extraction failure, not a successful
-        full compression. Nothing was actually preserved (confidence for
-        this case is separately 0.0, via validator.roundtrip's own
-        empty-decoded-text short-circuit), so claiming 100% savings would
-        contradict that signal rather than agree with it.
-
-    Otherwise clamped to >= 0: for short or fact-sparse text, notation can
-    legitimately end up *longer* than the original in token terms (see
-    notation.encoder's docstring on the same tradeoff). Reporting a negative
-    "savings" number would be technically accurate but confusing for a field
-    called `saved_percent` to return, so 0 (no savings) is reported instead.
+    Returns 0 if there's nothing to save a percentage of, or if notation
+    is empty (an extraction failure, not 100% compression). Otherwise
+    clamped to >= 0, since notation can be longer than the original for
+    short or fact-sparse text.
     """
     if original_tokens == 0:
         return 0.0
@@ -115,25 +78,13 @@ def compress(
 ) -> CompressResult:
     """Compress `text` into compact notation, with a round-trip confidence score.
 
-    This is one-off, single-text compression with no persistent knowledge
-    base involved (see KnowledgeBase.ingest, Phase 3, for the multi-document
-    incremental-update path). `similarity_threshold` is passed straight
-    through to canonicalize.dedup if provided; leaving it as None uses that
-    module's own default.
-
-    `spacy_model` selects which spaCy pipeline does NER and dependency
-    parsing -- any installed spaCy model name works here (a different
-    size, e.g. "en_core_web_trf" for higher accuracy, or a different
-    language, e.g. "de_core_news_sm" or "fr_core_news_sm"). See
-    parser.entities for how NER labels from non-English models get mapped
-    onto EntityType, and IMPORTANT: the relation-extraction PATTERNS in
-    parser.relations still contain English-specific lexical triggers (the
-    literal word "as" for object-complement roles, an English preposition
-    list for humanizing notation) -- switching spacy_model makes entity
-    extraction genuinely multilingual-capable, but relation extraction
-    quality on non-English text is unverified and likely to catch fewer
-    relations than it does for English, since those specific patterns
-    were only ever tuned and tested against English syntax.
+    One-off, single-text compression with no persistent knowledge base
+    (see KnowledgeBase.ingest for the multi-document path).
+    `similarity_threshold`, if given, is passed through to
+    canonicalize.dedup. `spacy_model` selects the spaCy pipeline for NER
+    and dependency parsing; relation-extraction patterns are
+    English-specific, so non-English models get weaker relation
+    extraction than entity extraction.
     """
     document = Document(text=text)
     entities = extract_entities(document, model_name=spacy_model)

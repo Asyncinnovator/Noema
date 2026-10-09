@@ -1,25 +1,11 @@
 """Text -> Relation extraction using spaCy's dependency parse.
 
-Phase 1 scope: rule-based patterns over the dependency tree, not a learned
-relation extractor (that's Phase 5, once `transformers` is added). This
-module recognizes four common clause shapes per sentence root:
-
-    1. Active SVO           "Larry Page founded Google"        -> founded
-    2. Passive + agent      "Google was founded by Larry Page" -> founded
-                             (subject/object swapped to the logical direction)
-    3. Passive + prep        "Google is headquartered in Mountain View"
-                             -> headquartered_in
-    4. Copular "role of"     "Sundar Pichai is the CEO of Google"
-                             -> ceo_of
-
-Anything outside these four shapes is skipped rather than guessed at --
-recall is intentionally traded for precision here, since low-confidence
-relations are harder to catch downstream than missing ones are to add in
-Phase 5.
-
-Requires entities to already be extracted for the document (see
-parser.entities.extract_entities) so that subject/object tokens can be
-resolved to Entity ids via character-offset overlap.
+Rule-based patterns over the dependency tree (see parser.transformer_relations
+for a learned alternative). Recognizes four clause shapes per sentence root:
+active SVO, passive+agent, passive+prep, and copular "role of". Anything
+else is skipped. Requires entities already extracted for the document
+(parser.entities.extract_entities) to resolve subject/object tokens to
+Entity ids via character-offset overlap.
 """
 
 from __future__ import annotations
@@ -163,7 +149,8 @@ def extract_relations(
                     if s_ent and o_ent and s_ent.id != o_ent.id:
                         _add_or_merge(relations, s_ent, predicate, o_ent, mention)
 
-            
+            # "Google Inc. named Sundar Pichai as CEO" -> ceo_of(Sundar Pichai, Google Inc.)
+            # Emitted in addition to the plain SVO relation above, not instead of it.
             as_prep = next(
                 (c for c in root.children if c.dep_ == "prep" and c.text.lower() == "as"), None
             )

@@ -20,7 +20,8 @@ dependencies = [
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "tiktoken>=0.13.0",
     "torch>=2.5.0",
-    # Pinned <5.0: transformers 5.x breaks fastcoref's model loading.
+    # Pinned <5.0: transformers 5.x breaks fastcoref's model loading
+    # (missing all_tied_weights_keys). Also covers this project's REBEL/NLI use.
     "transformers>=4.40,<5.0",
     "typer>=0.27.1",
     # Explicit: spacy.cli imports click directly, but neither spacy nor
@@ -29,8 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# coref, transformer relation extraction (REBEL), NLI validation.
-# Not used by compress()/KnowledgeBase. ~2.5GB of model weights on first use.
+# Coreference resolution, transformer-based relation extraction (REBEL),
+# and NLI-based validation. Not used by compress()/KnowledgeBase. ~2.5GB
+# of model weights on first use.
 advanced-nlp = [
     "fastcoref>=2.1.6",
 ]
@@ -40,9 +42,9 @@ compare-models = [
     "en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl",
 ]
 
-# noema.integrations.langchain / .llamaindex / .tokens. Each module
-# imports its third-party package lazily -- only instantiating the retriever
-# classes requires the matching extra.
+# Framework integrations -- noema.integrations.langchain / .llamaindex /
+# .tokens. Each module imports its third-party package lazily -- only
+# instantiating the retriever classes requires the matching extra.
 langchain = [
     "langchain-core>=0.3.0",
 ]

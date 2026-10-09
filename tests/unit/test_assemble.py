@@ -1,7 +1,6 @@
-"""Tests for noema.retrieval.assemble: sub-graph -> notation with a token budget.
-
-tiktoken is mocked for the same reason as elsewhere in this suite
-(openaipublic.blob.core.windows.net isn't reachable in this sandbox).
+"""Tests for noema.retrieval.assemble: sub-graph -> notation with a token
+budget. tiktoken is mocked since its remote vocab isn't reachable in this
+sandbox.
 """
 
 from __future__ import annotations

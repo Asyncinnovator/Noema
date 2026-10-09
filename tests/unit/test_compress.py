@@ -1,14 +1,11 @@
 """Tests for noema.compress: the full parse->graph->canonicalize->encode->
 decode->validate->count-tokens pipeline behind noema.compress(text).
 
-Both networked dependencies are mocked here, for the same reason as
-test_canonicalize.py and test_roundtrip.py: sentence-transformers needs
+Both networked dependencies are mocked, since sentence-transformers needs
 huggingface.co and tiktoken needs openaipublic.blob.core.windows.net,
-neither of which this sandbox's network allowlist includes. These tests
-verify the pipeline wiring and CompressResult's arithmetic, not real
-embedding similarity or real BPE token counts -- run compress() against the
-live models on your own machine to sanity-check actual saved_percent and
-confidence numbers on real text.
+neither reachable in this sandbox. These tests verify the pipeline wiring
+and CompressResult's arithmetic, not real embedding similarity or BPE
+token counts.
 """
 
 from __future__ import annotations
@@ -23,21 +20,16 @@ import noema.canonicalize.dedup as dedup
 import noema.validator.roundtrip as roundtrip
 from noema.compress import CompressResult, _saved_percent, compress, count_tokens
 
-# NOTE: deliberately NOT `import noema.compress as compress_module`. That form
-# resolves via attribute-chasing (getattr(noema, "compress")), and once
-# noema/__init__.py does `from noema.compress import compress` (the intended
-# top-level API -- see project plan usage examples), `noema.compress` legitimately
-# refers to the function, not the module, shadowing it the same way the
-# canonicalize subpackage was shadowed earlier. importlib.import_module reads
-# sys.modules directly instead of chasing attributes, so it isn't affected by
-# that shadowing and reliably returns the actual module for patching internals.
+# Not `import noema.compress as compress_module`: since noema/__init__.py
+# does `from noema.compress import compress`, `noema.compress` resolves to
+# the function, not the module. importlib.import_module reads sys.modules
+# directly, so it isn't affected by that shadowing.
 compress_module = importlib.import_module("noema.compress")
 
 
 class _FakeEmbeddingModel:
     """Exact-match-only fake: identical (case/whitespace-insensitive) strings
-    embed identically, everything else is orthogonal. Used for both
-    canonicalize's dedup step and the round-trip validator.
+    embed identically, everything else is orthogonal.
     """
 
     def encode(self, texts, normalize_embeddings=True):
@@ -57,9 +49,7 @@ class _FakeEmbeddingModel:
 
 
 class _FakeEncoding:
-    """Whitespace-split stand-in for a tiktoken.Encoding -- not real BPE,
-    but deterministic and enough to test count_tokens/_saved_percent wiring.
-    """
+    """Whitespace-split stand-in for a tiktoken.Encoding."""
 
     def encode(self, text: str) -> list[str]:
         return text.split()
@@ -204,10 +194,8 @@ class TestSavedPercent:
         assert _saved_percent(0, 0) == 0.0
 
     def test_empty_notation_with_nonempty_original_is_zero_not_hundred(self):
-        # notation_tokens == 0 here means nothing was extractable from the
-        # text at all -- an extraction failure, not perfect compression.
-        # Must NOT report 100% "savings", which would contradict the
-        # confidence == 0.0 this case also produces.
+        # notation_tokens == 0 means nothing was extractable from the text,
+        # an extraction failure, not perfect compression.
         assert _saved_percent(9, 0) == 0.0
 
     def test_near_full_savings_is_reported_accurately(self):

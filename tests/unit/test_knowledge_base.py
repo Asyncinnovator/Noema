@@ -168,10 +168,7 @@ class TestCrossBatchCanonicalization:
         # This batch parses 2 raw entities ('Google Inc.', 'Sundar Pichai').
         # 'Google Inc.' merges into the existing 'Google' node; 'Sundar
         # Pichai' does not merge with anything. Exactly 1 merge should be
-        # reported -- not 0, which is what the old (buggy) formula of
-        # entities_before - entities_after always produced whenever ingest
-        # grew the graph, silently hiding every merge that happened
-        # alongside growth.
+        # reported.
         assert report.entities_merged == 1
 
     def test_entities_merged_is_zero_when_nothing_merges(self, patched_exact_match):
@@ -378,4 +375,4 @@ class TestFactIndexCaching:
         with patch.object(bundle, "_load_model") as build_model_mock:
             loaded_kb = KnowledgeBase.load(path)
         assert build_model_mock.called is False
-        assert loaded_kb._fact_index is not None                                             
+        assert loaded_kb._fact_index is not None

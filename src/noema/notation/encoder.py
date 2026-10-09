@@ -18,19 +18,10 @@ Example, for "Larry Page founded Google in 1998. Sundar Pichai is the CEO of Goo
     #1 -found-> #2
     #3 -ceo_of-> #2
 
-Design goals:
-  - Ids are short, local, sequential integers ("#1", "#2", ...) scoped to
-    this notation block -- NOT the long ent_/rel_ ids schema.py generates.
-    Short ids are the single biggest token-count lever available here, since
-    entity references appear on every relation line.
-  - Every referenced entity gets exactly one entity_line, emitted before any
-    line that references it, so the notation is a valid forward-reference-free
-    stream (parseable in one top-to-bottom pass -- see notation.decoder).
-  - No connective words, no restated subjects, no filler -- this is the
-    "structural compression" layer from the project plan. Deduplication
-    compression (same fact, one node) already happened upstream in
-    canonicalize.dedup; this module just renders what's left as compactly
-    as possible.
+Ids are short, local, sequential integers scoped to this notation block, not
+the long ent_/rel_ ids schema.py generates. Every referenced entity gets
+exactly one entity_line, emitted before any line that references it, so the
+notation parses in one top-to-bottom pass (see notation.decoder).
 """
 
 from __future__ import annotations
@@ -42,16 +33,12 @@ from noema.schema import Entity, Event, Relation
 def encode_graph(graph: SemanticGraph, entity_ids: list[str] | None = None) -> str:
     """Render a SemanticGraph (or a chosen sub-graph of it) as notation text.
 
-    entity_ids restricts encoding to a specific sub-graph -- pass the ids
-    returned by SemanticGraph.neighbors() for query-time retrieval (Phase 4)
-    instead of encoding the whole knowledge base. Leaving it as None encodes
-    the whole graph, subject to one filter: entities with no relation or
-    event referencing them are dropped. An isolated entity carries no fact
-    to compress -- it's pure token cost with nothing compact about it -- so
-    including it by default would work against the whole point of this
-    module. Pass entity_ids explicitly to force-include a specific entity
-    regardless (e.g. the anchor node of a retrieval query, before expansion
-    finds anything connected to it).
+    `entity_ids` restricts encoding to a specific sub-graph, e.g. the ids
+    returned by SemanticGraph.neighbors() for query-time retrieval. Leaving
+    it None encodes the whole graph, except entities with no relation or
+    event referencing them are dropped (an isolated entity has no fact to
+    compress). Pass entity_ids explicitly to force-include a specific
+    entity regardless.
     """
     included_entity_ids = (
         set(entity_ids) if entity_ids is not None else {e.id for e in graph.entities}

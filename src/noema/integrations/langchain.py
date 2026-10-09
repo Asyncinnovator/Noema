@@ -6,11 +6,9 @@ Requires the optional `langchain` extra:
     pip install noema[langchain]
 
 Importing this module never fails for lack of that extra -- the
-`langchain-core` import below is wrapped in a try/except, and the class
-body still defines fine against the `object` fallback (plain class
-attributes instead of pydantic fields). Only *instantiating*
-`NoemaRetriever` without `langchain-core` installed raises `ImportError`
-with the install hint.
+`langchain-core` import is wrapped in a try/except, and the class body
+falls back to plain `object`. Only instantiating `NoemaRetriever` without
+`langchain-core` installed raises `ImportError` with the install hint.
 
 Example
 -------
@@ -22,9 +20,6 @@ Example
 
     docs = retriever.invoke("Who is the CEO of Google?")
     print(docs[0].page_content)   # compact notation, ready for prompt injection
-
-    # Drop straight into a LangChain chain:
-    #   retriever | prompt | llm
 """
 
 from __future__ import annotations
@@ -56,16 +51,11 @@ class NoemaRetriever(BaseRetriever):  # type: ignore[misc]
     interface, so a Noema knowledge base can be dropped into any LangChain
     chain or agent that expects a retriever.
 
-    Each call returns at most one `Document`: Noema's retrieval already
-    assembles a single token-budgeted sub-graph (vector search -> graph
-    expansion -> notation, per the project plan's workflow) rather than a
-    list of independent chunks, so splitting it back into several
-    "documents" would just be re-chunking something that was deliberately
-    de-chunked. The document's `page_content` is `result.text` (notation
-    or natural language, depending on `format`), and `metadata` carries
+    Each call returns at most one `Document`, since retrieval already
+    assembles a single token-budgeted sub-graph rather than independent
+    chunks. `page_content` is `result.text`; `metadata` carries
     `entity_ids`, `relation_ids`, `token_count`, `truncated`, and
-    `fact_matches` (relation id -> similarity score) for callers that want
-    to inspect what was actually retrieved.
+    `fact_matches`.
     """
 
     kb: KnowledgeBase
@@ -89,9 +79,7 @@ class NoemaRetriever(BaseRetriever):  # type: ignore[misc]
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: "CallbackManagerForRetrieverRun"
     ) -> list["Document"]:
-        # KnowledgeBase.retrieve() is synchronous (in-memory graph + local
-        # faiss index, no I/O to await on), so the async path just calls it
-        # directly rather than pretending to await something.
+        # KnowledgeBase.retrieve() is synchronous (no I/O to await on).
         return self._retrieve_as_documents(query)
 
     def _retrieve_as_documents(self, query: str) -> list["Document"]:

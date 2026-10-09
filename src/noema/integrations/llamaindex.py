@@ -53,13 +53,10 @@ class NoemaLlamaIndexRetriever(BaseRetriever):  # type: ignore[misc]
     """Adapts `KnowledgeBase.retrieve()` to LlamaIndex's `BaseRetriever`
     interface (`_retrieve(QueryBundle) -> list[NodeWithScore]`).
 
-    Like the LangChain adapter, this wraps Noema's already-assembled,
-    token-budgeted sub-graph as a single `TextNode` rather than splitting
-    it into multiple nodes -- the de-duplication and budget assembly
-    already happened inside `kb.retrieve()`. The node's score is the best
-    (highest) fact-similarity score from `result.fact_matches`, or `1.0`
-    when there were no scored matches but the budget assembly still
-    produced text (e.g. a single-fact graph).
+    Wraps Noema's already-assembled, token-budgeted sub-graph as a single
+    `TextNode`. The node's score is the best fact-similarity score from
+    `result.fact_matches`, or `1.0` if there were no scored matches but
+    assembly still produced text.
     """
 
     def __init__(
@@ -105,6 +102,5 @@ class NoemaLlamaIndexRetriever(BaseRetriever):  # type: ignore[misc]
         return [NodeWithScore(node=node, score=best_score)]
 
     async def _aretrieve(self, query_bundle: "QueryBundle") -> list["NodeWithScore"]:
-        # Synchronous under the hood for the same reason as the LangChain
-        # adapter's async path -- no I/O here to actually await.
+        # Synchronous under the hood -- no I/O to await.
         return self._retrieve(query_bundle)

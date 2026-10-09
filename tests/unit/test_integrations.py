@@ -1,26 +1,15 @@
-"""Tests for noema.integrations (Phase 6: framework integrations).
+"""Tests for noema.integrations (the framework integration adapters).
 
 `langchain-core`, `llama-index-core`, and `anthropic` are all optional
-third-party packages (their own `noema[...]` extras), so these tests don't
-assume any of them are actually installed in the environment running the
-suite:
+third-party packages, so these tests don't assume any are installed:
 
 - `TestLangChainUnavailable` / `TestLlamaIndexUnavailable` run only when the
-  respective package is absent, and check the ImportError-with-install-hint
+  respective package is absent, checking the ImportError-with-install-hint
   behavior.
 - `TestLangChainRetriever` / `TestLlamaIndexRetriever` run only when the
-  respective package IS installed, and exercise the real adapter classes
-  against a mocked `KnowledgeBase` (mocking `KnowledgeBase.retrieve()`
-  itself, not any network/model call -- there's nothing network-dependent
-  in these adapters to mock around).
-- `TestTokenHelpers` covers `count_tokens_openai`/`count_tokens_anthropic`,
-  mocking tiktoken/anthropic the same way the rest of this suite mocks
-  networked model loads.
-
-Whichever branch is skipped, the *other* module (the "unavailable" one for
-whichever package isn't installed) still gets covered, so every run of
-this file exercises both the "extra not installed" and "extra installed"
-code paths for at least the package(s) present.
+  respective package is installed, exercising the real adapter classes
+  against a mocked `KnowledgeBase`.
+- `TestCountTokensOpenAI` / `TestCountTokensAnthropic` mock tiktoken/anthropic.
 """
 
 from __future__ import annotations
@@ -86,8 +75,8 @@ class TestLangChainUnavailable:
             NoemaRetriever(kb=_mock_kb())
 
     def test_module_itself_imports_cleanly(self):
-        # The point of the try/except at module level: importing the
-        # module never requires the extra, only instantiating the class.
+        # Importing the module never requires the extra, only instantiating
+        # the class.
         import noema.integrations.langchain  # noqa: F401
 
 
@@ -130,9 +119,8 @@ class TestLangChainRetriever:
         assert docs == []
 
     def test_async_path_delegates_to_same_logic(self):
-        # Driven with asyncio.run() directly rather than pytest-asyncio
-        # (not a project dependency) -- this is the only async entry point
-        # in the integration, so one plain asyncio.run() call is enough.
+        # Driven with asyncio.run() directly rather than pytest-asyncio,
+        # which isn't a project dependency.
         import asyncio
 
         from noema.integrations.langchain import NoemaRetriever

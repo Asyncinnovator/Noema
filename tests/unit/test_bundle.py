@@ -1,9 +1,8 @@
 """Tests for noema.storage.bundle.
 
-Like test_canonicalize.py and test_roundtrip.py, the real embedding model
-(huggingface.co) isn't reachable in this sandbox, so _load_model is mocked.
-These tests verify bundle pack/unpack correctness and the fact-embedding
-wiring, not real embedding quality.
+The real embedding model (huggingface.co) isn't reachable in this sandbox,
+so _load_model is mocked. These tests verify bundle pack/unpack correctness
+and the fact-embedding wiring, not real embedding quality.
 """
 
 from __future__ import annotations

@@ -1,13 +1,10 @@
 """Tests for noema.canonicalize.dedup.
 
-The real embedding model (sentence-transformers/all-MiniLM-L6-v2) is
-downloaded from huggingface.co, which most sandboxed CI environments won't
-have network access to. `patched_embedding_model` replaces it with a
-deterministic fake so these tests check the *merge logic* (clustering,
-alias/mention union, relation remapping) without depending on model
-downloads or real embedding quality. Run the exact-match tests as-is
-anywhere; if you want to sanity-check real embedding similarity thresholds
-for your own data, do that separately against the live model.
+The real embedding model (sentence-transformers/all-MiniLM-L6-v2) needs
+huggingface.co, which most sandboxed CI environments can't reach.
+`patched_embedding_model` replaces it with a deterministic fake so these
+tests check the merge logic (clustering, alias/mention union, relation
+remapping) without depending on model downloads or real embedding quality.
 """
 
 from __future__ import annotations
@@ -26,10 +23,8 @@ class _FakeEmbeddingModel:
     """Deterministic stand-in for SentenceTransformer.
 
     Every distinct input string gets its own orthogonal one-hot vector
-    (cosine similarity 0 against every other string), EXCEPT names supplied
-    in `same_as` groups, which share a vector (cosine similarity 1). This
-    makes similarity-threshold behavior exact and independent of any real
-    model's embedding quality.
+    (cosine similarity 0), except names supplied in `same_as` groups, which
+    share a vector (cosine similarity 1).
     """
 
     def __init__(self, same_as: list[set[str]] | None = None) -> None:
@@ -55,9 +50,9 @@ class _FakeEmbeddingModel:
 
 @pytest.fixture
 def patched_embedding_model():
-    """Patch dedup._load_model to return a fake with no cross-name
-    similarity by default. Tests that need a near-duplicate pair to merge
-    construct their own _FakeEmbeddingModel(same_as=[...]) instead.
+    """Patch dedup._load_model with a fake that has no cross-name similarity.
+    Tests needing a near-duplicate pair construct their own
+    _FakeEmbeddingModel(same_as=[...]) instead.
     """
     with patch.object(dedup, "_load_model", return_value=_FakeEmbeddingModel()):
         yield
@@ -221,13 +216,9 @@ class TestEventRemapping:
 
 class TestBusinessSuffixStripping:
     def test_inc_suffix_merges_via_exact_match_alone(self):
-        """This is the specific case a real (non-mocked) run against the
-        live all-MiniLM-L6-v2 model exposed: cosine similarity between
-        'google' and 'google inc' fell BELOW the default 0.85 threshold, so
-        relying on embeddings alone missed this extremely common pattern.
-        Using an embedding model that gives these two names ZERO similarity
-        proves the merge now happens via suffix-stripped exact match,
-        independent of any embedding model's behavior.
+        """Cosine similarity between 'google' and 'google inc' can fall
+        below the default threshold, so this uses a zero-similarity model
+        to prove the merge happens via suffix-stripped exact match.
         """
         graph = SemanticGraph()
         graph.add_entity(_entity("Google", EntityType.ORG))
@@ -235,8 +226,7 @@ class TestBusinessSuffixStripping:
 
         class _ZeroSimilarityModel:
             def encode(self, texts, normalize_embeddings=True):
-                # Orthogonal vectors for every distinct string -- embeddings
-                # contribute nothing to this merge if it succeeds.
+                # Orthogonal vectors for every distinct string.
                 base = {t: i for i, t in enumerate(dict.fromkeys(texts))}
                 dim = max(len(base), 2)
                 vecs = np.zeros((len(texts), dim), dtype="float32")
@@ -287,10 +277,9 @@ class TestSurnameMatching:
         assert len(canon.entities) == 1
 
     def test_full_name_stays_canonical_even_with_fewer_mentions(self):
-        # This is the specific regression a real run surfaced: a bare
-        # surname ("Chen") accumulated more raw mentions across a document
-        # than the full name ("David Chen") that introduced it. Canonical
-        # selection must still prefer the full name for PERSON entities.
+        # A bare surname can accumulate more mentions than the full name
+        # that introduced it; canonical selection must still prefer the
+        # full name for PERSON entities.
         graph = SemanticGraph()
         chen = _entity("Chen", EntityType.PERSON, mentions=8)
         david_chen = _entity("David Chen", EntityType.PERSON, mentions=3)
@@ -336,9 +325,8 @@ class TestSurnameMatching:
         assert len(canon.entities) == 2
 
     def test_org_canonical_selection_still_prefers_most_mentions(self, patched_embedding_model):
-        # Confirms the type-scoped fix didn't regress the ORG case: the
-        # more-attested short brand name ("Google") should stay canonical
-        # over the longer legal name ("Google Inc."), unlike PERSON.
+        # The more-attested short brand name ("Google") should stay
+        # canonical over the longer legal name ("Google Inc."), unlike PERSON.
         graph = SemanticGraph()
         graph.add_entity(_entity("Google", EntityType.ORG, mentions=5))
         graph.add_entity(_entity("Google Inc.", EntityType.ORG, mentions=1))
@@ -367,7 +355,7 @@ class TestIsSurnameMatch:
 
 class TestFullPipelineIntegration:
     def test_realistic_multi_document_scenario(self, patched_embedding_model):
-        """Three documents mention 'Google' -- after canonicalization it
+        """Three documents mention 'Google'; after canonicalization it
         must collapse to one node carrying all cross-document relations.
         """
         google_1 = _entity("Google", EntityType.ORG)

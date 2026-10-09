@@ -1,12 +1,10 @@
 """Tests for noema.validator.roundtrip.
 
-Like test_canonicalize.py, the real embedding model download
-(sentence-transformers/all-MiniLM-L6-v2, from huggingface.co) isn't
-reachable in a network-restricted sandbox, so _load_model is mocked with a
-deterministic fake. These tests check validate()'s logic -- clipping,
-thresholding, the empty-text short-circuit -- not real embedding quality.
-Run a spot-check against the live model on your own machine if you want to
-confirm real confidence scores land where you expect for your data.
+The real embedding model (sentence-transformers/all-MiniLM-L6-v2, from
+huggingface.co) isn't reachable in this sandbox, so _load_model is mocked
+with a deterministic fake. These tests check validate()'s logic --
+clipping, thresholding, the empty-text short-circuit -- not real embedding
+quality.
 """
 
 from __future__ import annotations

@@ -1,26 +1,17 @@
 """Notation -> natural language.
 
-Two responsibilities, kept in one module since they share the same parsing
-step:
+Two responsibilities, sharing the same parsing step:
 
   1. parse_notation() -- reads notation text (see notation.encoder for the
-     grammar) back into structured facts. This is a real parser, not just a
-     stepping stone to text: storage and retrieval (Phases 3-4) will also
-     need "notation string -> structured facts" independent of NL rendering.
+     grammar) into structured facts.
   2. decode() -- renders those parsed facts as natural language sentences,
      for the round-trip validator (validator.roundtrip) to compare against
      the original source text.
 
-decode() is template-based, not a generative model -- Phase 1/2 has no NLG
-component. Predicates are humanized by simple pattern rules (see
-_humanize_predicate), which produce grammatically rough but semantically
-recognizable sentences ("Google is headquarter in Mountain View" rather than
-the fully-conjugated "Google is headquartered in Mountain View"). This is
-an accepted limitation for now: the round-trip validator's first-pass
-confidence signal is embedding cosine similarity (Phase 2), which is fairly
-tolerant of minor grammar roughness since it scores meaning, not fluency.
-Phase 5's NLI-based validator will need decode() to be tightened, or swapped
-for something generative, if that roughness turns out to matter in practice.
+decode() is template-based, not a generative model. Predicates are
+humanized by simple pattern rules (_humanize_predicate), producing
+grammatically rough but semantically recognizable sentences (e.g. "is
+headquarter in" rather than "is headquartered in").
 """
 
 from __future__ import annotations
@@ -28,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-DEFAULT_MODEL = "all-MiniLM-L6-v2"  # unused here, kept for symmetry with other modules
+DEFAULT_MODEL = "all-MiniLM-L6-v2"  # unused here; kept for symmetry with other modules
 
 _ENTITY_LINE = re.compile(r"^#(\d+) (.+) :(\w+)$")
 _RELATION_LINE = re.compile(r"^#(\d+) -(.+)-> #(\d+)$")
@@ -71,10 +62,8 @@ def parse_notation(notation: str) -> ParsedNotation:
     """Parse notation text into structured facts.
 
     Raises ValueError with a line number on malformed input, or on a
-    relation/event referencing an entity id no entity_line has defined --
-    the grammar requires entities to be declared before anything references
-    them (see notation.encoder docstring), so a forward reference is always
-    either a hand-editing mistake or truncated notation.
+    relation/event referencing an entity id no entity_line has defined yet
+    (the grammar requires entities declared before anything references them).
     """
     parsed = ParsedNotation()
 
@@ -139,10 +128,8 @@ def decode(notation: str) -> str:
     """Render notation text as a natural-language paragraph.
 
     One sentence per relation, in the order they appear in the notation,
-    followed by one sentence per event. Multiple relations sharing a
-    subject are NOT combined into a single sentence in Phase 2 -- that's a
-    fluency nicety, not a meaning-preservation requirement, and combining
-    them correctly needs real NLG rather than templates.
+    followed by one sentence per event. Relations sharing a subject are not
+    combined into a single sentence.
     """
     parsed = parse_notation(notation)
     sentences: list[str] = []
