@@ -1,22 +1,11 @@
 """Sub-graph -> notation assembly with a token budget.
 
-Phase 4 scope: the final stage of "vector search -> graph expansion ->
-sub-graph -> notation". Takes an ExpandedSubgraph (from retrieval.expand)
-and greedily assembles as much of it as fits within max_tokens, in priority
-order:
-
-  1. Facts that directly matched the query (seed_relation_ids) before facts
-     merely reachable near them.
-  2. Among non-seed facts, closer facts (lower hop-distance from the nearest
-     seed entity) before farther ones.
-
-This is priority-ordered greedy packing, not an optimal knapsack solve --
-assembly stops at the FIRST fact that would exceed the budget rather than
-skipping it to try a smaller, lower-priority one afterward. Given the
-ordering already reflects relevance to the query, taking the highest-
-priority prefix that fits is the right tradeoff here: a knapsack-optimal
-pack could end up swapping in several low-relevance facts instead of one
-higher-relevance one, purely because they happened to be smaller.
+Takes an ExpandedSubgraph (from retrieval.expand) and greedily assembles
+as much of it as fits within max_tokens, in priority order: facts that
+directly matched the query (seed_relation_ids) first, then non-seed facts
+closest to a seed entity. This is priority-ordered greedy packing, not an
+optimal knapsack solve -- assembly stops at the first fact that would
+exceed the budget rather than trying a smaller, lower-priority one instead.
 """
 
 from __future__ import annotations
@@ -59,13 +48,11 @@ def _priority_key(relation: Relation, expanded: ExpandedSubgraph) -> tuple[int, 
 
 
 def _render(graph: SemanticGraph, entity_ids: set[str], relation_ids: set[str]) -> str:
-    """Render notation for EXACTLY the given entities/relations.
+    """Render notation for exactly the given entities/relations.
 
-    Deliberately not encode_graph(graph, entity_ids=entity_ids) directly --
-    that would auto-include every relation the full graph has between those
-    entities, even ones not yet committed during greedy assembly (see
-    assemble()'s loop), which would make the running token count reflect
-    facts the budget check hasn't actually approved yet.
+    Not encode_graph(graph, entity_ids=entity_ids) directly, since that
+    would auto-include every relation the full graph has between those
+    entities, even ones not yet committed by greedy assembly.
     """
     subset = SemanticGraph()
     for entity_id in entity_ids:

@@ -1,17 +1,10 @@
 """Vector search over a knowledge base's fact embeddings.
 
-Phase 4 scope: given a query string, embed it with the same model used to
-build the fact index (see storage.bundle.build_fact_index), and return the
-top-k most similar facts (relations) by cosine similarity -- the first
-stage of "vector search -> graph expansion -> sub-graph -> notation"
-described in the project plan's retrieval workflow.
-
-Deliberately independent of KnowledgeBase: this module only needs a query
-string plus a faiss index and the fact_ids list that maps index rows back
-to Relation.id (both produced by storage.bundle.build_fact_index). It
-doesn't touch a live KB object. That keeps it testable in isolation and
-reusable if the index ends up served from a different store later (Phase 7
-persistent backends).
+Given a query string, embeds it with the same model used to build the fact
+index (storage.bundle.build_fact_index) and returns the top-k most similar
+facts (relations) by cosine similarity. Independent of KnowledgeBase: only
+needs a query string plus a faiss index and the fact_ids list mapping
+index rows back to Relation.id.
 """
 
 from __future__ import annotations
@@ -60,9 +53,8 @@ def search_facts(
     by descending similarity score.
 
     Returns fewer than top_k results if the knowledge base has fewer facts
-    than top_k. faiss pads short result sets with index -1 rather than
-    erroring; those are filtered out here rather than surfaced as a bogus
-    match with an out-of-range fact_ids lookup.
+    than top_k. faiss pads short result sets with index -1, which is
+    filtered out here.
     """
     if not fact_ids or index.ntotal == 0:
         return []

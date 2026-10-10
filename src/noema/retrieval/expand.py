@@ -1,15 +1,11 @@
 """Graph expansion: turn vector-search hits into a candidate sub-graph.
 
-Phase 4 scope: the second stage of "vector search -> graph expansion ->
-sub-graph -> notation". Takes the seed facts (relations) vector_search.py
-found, pulls out the entities directly involved in them, then walks outward
-up to `hops` relation/participation edges using the same traversal
-SemanticGraph.neighbors() already provides -- but here computed once via a
-multi-source BFS from ALL seed entities together, so each entity in the
-result also carries its minimum hop-distance from the nearest seed. That
-distance is what assemble.py uses to decide what to keep or trim once a
-token budget is applied: closer-to-the-query entities are more likely to be
-relevant than a full hop-2 away.
+Takes the seed facts (relations) vector_search.py found, pulls out the
+entities directly involved, then walks outward up to `hops`
+relation/participation edges via a multi-source BFS from all seed entities
+together, so each entity in the result also carries its minimum
+hop-distance from the nearest seed. assemble.py uses that distance to
+decide what to keep or trim under a token budget.
 """
 
 from __future__ import annotations
@@ -65,12 +61,9 @@ def expand_from_facts(
     if not seed_entities:
         return ExpandedSubgraph()
 
-    # Multi-source BFS over the undirected view: a fact is relevant to the
-    # query regardless of which side of the relation you traverse from,
-    # same reasoning as SemanticGraph.neighbors() uses for single-entity
-    # traversal. Computing this once for all seeds together (rather than
-    # calling .neighbors() per seed and merging) gives the true minimum
-    # distance when two seed entities are near each other.
+    # Multi-source BFS over the undirected view, computed once for all
+    # seeds together so it gives the true minimum distance when two seed
+    # entities are near each other.
     undirected = graph.graph.to_undirected(as_view=True)
     entity_distance: dict[str, int] = {}
     for seed in seed_entities:
@@ -81,9 +74,8 @@ def expand_from_facts(
             if node_id not in entity_distance or distance < entity_distance[node_id]:
                 entity_distance[node_id] = distance
 
-    # The underlying graph also contains event nodes (see graph.builder);
-    # traversal can walk through/onto them, but they aren't entities and
-    # don't belong in entity_distance/entity_ids.
+    # Traversal can walk through/onto event nodes, but they aren't entities
+    # and don't belong in entity_distance/entity_ids.
     entity_distance = {
         node_id: dist for node_id, dist in entity_distance.items() if graph.get_entity(node_id)
     }
@@ -99,9 +91,8 @@ def relations_within(graph: SemanticGraph, entity_ids: set[str]) -> list[Relatio
     """Relations whose subject AND object both fall within `entity_ids`.
 
     A relation touching only one included entity (the other endpoint fell
-    outside the hop budget) is excluded -- a half-visible fact isn't
-    meaningful notation, matching notation.encoder's own entity_ids
-    filtering behavior.
+    outside the hop budget) is excluded, since a half-visible fact isn't
+    meaningful notation.
     """
     return [
         relation
