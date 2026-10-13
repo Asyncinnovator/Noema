@@ -1,5 +1,4 @@
-"""KnowledgeBase: the graph-backed, persistent, incrementally-updatable
-store described in the project plan's core function #2 and #4.
+"""KnowledgeBase: a graph-backed, persistent, incrementally-updatable store.
 
     kb = noema.KnowledgeBase()
     kb.ingest(documents)             # parses, dedupes, canonicalizes
@@ -8,23 +7,22 @@ store described in the project plan's core function #2 and #4.
     kb = noema.KnowledgeBase.load("company_kb.noema")
     kb.ingest(new_documents)         # new facts merge into existing entities
 
-Incremental ingestion strategy: each .ingest() call re-runs canonicalize()
-over the UNION of the existing graph and the newly parsed documents, rather
-than only deduping the new batch against itself. This is what makes "Google"
-mentioned in an ingest() call today merge with "Google" ingested last week
-into the same node, instead of accumulating a fresh duplicate every call --
-the exact requirement Phase 3 sets out ("avoid duplicate nodes").
+Each .ingest() call re-runs canonicalize() over the union of the existing
+graph and the newly parsed documents, so a repeated entity merges into the
+same node instead of duplicating. This re-canonicalizes the whole knowledge
+base on every ingest, so cost grows with total KB size, not just the new
+batch.
 
-The tradeoff: this re-canonicalizes the whole knowledge base on every
-ingest(), which is correct but not scalable -- cost grows with total KB
-size, not just the new batch. That's an accepted Phase 3 limitation, not an
-oversight: efficient incremental canonicalization (e.g. only comparing new
-entities against an existing embedding index instead of all-pairs) is a
-Phase 7 (scale) concern once KBs are large enough for it to matter.
+For large or streamed document sets, ingest_stream() chunks the work into
+fixed-size batches instead of parsing everything into memory at once. For
+knowledge bases too large to keep as a single .noema bundle, sync_to_backend()
+and load_from_backend() move the graph to/from a persistent GraphBackend
+(e.g. Neo4j or an RDF store) instead.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from noema.canonicalize.dedup import DEFAULT_SIMILARITY_THRESHOLD, canonicalize
@@ -37,15 +35,17 @@ from noema.retrieval.assemble import DEFAULT_MAX_TOKENS, DEFAULT_TOKEN_MODEL, as
 from noema.retrieval.expand import expand_from_facts
 from noema.retrieval.vector_search import FactMatch, search_facts
 from noema.schema import Document, ParsedDocument
+from noema.storage.backends import GraphBackend, read_graph, write_graph
 from noema.storage.bundle import DEFAULT_EMBEDDING_MODEL, build_fact_index, load_bundle, save_bundle
+
+# Default chunk size for ingest_stream(): how many documents are parsed and
+# canonicalized together before moving to the next chunk.
+DEFAULT_BATCH_SIZE = 100
 
 
 @dataclass
 class IngestReport:
-    """Summary of what one .ingest() call did -- the "dedup stats" the
-    project plan's manifest.json describes, surfaced back to the caller
-    rather than only written to disk.
-    """
+    """Summary of what one .ingest() call did."""
 
     documents_ingested: int
     entities_before: int
@@ -59,14 +59,10 @@ class IngestReport:
         """How many entities were folded into another entity (by exact-match
         or embedding-similarity dedup) during this ingest.
 
-        NOT simply `entities_before - entities_after` -- ingest() almost
-        always *grows* the graph (new documents contribute new entities
-        alongside whatever merges also happen), so that difference is
-        usually negative and clamps to a misleading 0 even when real merges
-        occurred. The correct count compares the total RAW candidate pool
-        for this ingest (existing entities + newly parsed ones, before
-        canonicalization) against what remained after: entities_parsed
-        exists specifically so this property can compute that correctly.
+        Not simply `entities_before - entities_after`, since ingest()
+        usually grows the graph with new entities alongside any merges.
+        Compares the raw candidate pool (existing + newly parsed, before
+        canonicalization) against what remained after.
         """
         raw_candidate_count = self.entities_before + self.entities_parsed
         return max(0, raw_candidate_count - self.entities_after)
@@ -76,14 +72,10 @@ class IngestReport:
 class RetrievalResult:
     """Result of kb.retrieve(query, ...).
 
-    `text` is what the project plan's usage example injects into an LLM
-    prompt (`context.text`) -- its content depends on `format`: the raw
-    notation for format="notation" (the default, and the token-efficient
-    choice), or a decoded natural-language rendering for
-    format="natural_language". `notation` is always the raw notation
-    regardless of format, for the same reason CompressResult always
-    includes decoded_text: costs nothing to include, and makes a surprising
-    result debuggable.
+    `text` depends on `format`: raw notation for format="notation"
+    (default, token-efficient), or a decoded natural-language rendering
+    for format="natural_language". `notation` is always the raw notation
+    regardless of format.
     """
 
     text: str
@@ -103,8 +95,8 @@ def _normalize_documents(documents: str | Document | list[str | Document]) -> li
 
 def _merge_graphs(*graphs: SemanticGraph) -> SemanticGraph:
     """Combine multiple already-built graphs into one, entities first (across
-    all graphs) then relations then events, since SemanticGraph.add_relation/
-    add_event require their referenced entities to already be present.
+    all graphs) then relations then events, since relations/events require
+    their referenced entities to already be present.
     """
     merged = SemanticGraph()
     for graph in graphs:
@@ -136,18 +128,13 @@ class KnowledgeBase:
         self._graph = SemanticGraph()
         self._embedding_model = embedding_model
         self._similarity_threshold = similarity_threshold
-        # Selects which spaCy pipeline does NER and dependency parsing for
-        # every document this KnowledgeBase ever ingests -- see
-        # compress()'s spacy_model docstring for what switching this does
-        # and does not buy you (entity extraction becomes genuinely
-        # multilingual-capable; relation extraction stays English-tuned).
+        # spaCy pipeline used for NER/dependency parsing on every document
+        # this KnowledgeBase ingests.
         self._spacy_model = spacy_model
 
         # Cached fact (relation) embedding index for retrieve(). Lazily
-        # built on first retrieve() call, invalidated on every ingest()
-        # (the graph -- and therefore the facts -- changed), and restored
-        # cheaply on load() by reusing what load_bundle() already computed
-        # rather than re-embedding every fact from scratch right after a load.
+        # built on first retrieve() call, invalidated on every ingest(),
+        # and restored directly on load() from what load_bundle() computed.
         self._fact_ids: list[str] | None = None
         self._fact_index = None
 
@@ -165,10 +152,7 @@ class KnowledgeBase:
     def ingest(self, documents: str | Document | list[str | Document]) -> IngestReport:
         """Parse, canonicalize, and merge new documents into the knowledge base.
 
-        Accepts a single string, a single Document, or a list mixing either
-        -- matching the flexibility of noema.compress()'s plain-text input
-        while still allowing pre-built Document objects (with metadata) when
-        the caller has them.
+        Accepts a single string, a single Document, or a list mixing either.
         """
         docs = _normalize_documents(documents)
 
@@ -201,6 +185,65 @@ class KnowledgeBase:
             relations_after=len(self._graph.relations),
         )
 
+    def ingest_stream(
+        self,
+        documents: Iterable[str | Document],
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        checkpoint_path: str | None = None,
+        on_batch: Callable[[int, IngestReport], None] | None = None,
+    ) -> IngestReport:
+        """Ingest a large or streamed set of documents in fixed-size batches.
+
+        `documents` may be any iterable, including a generator that reads
+        from disk lazily, so the whole set never needs to be resident in
+        memory at once. Each batch is parsed and canonicalized with a
+        regular ingest() call, so cost per batch still grows with total KB
+        size, but the batch itself stays a fixed, bounded size instead of
+        the whole document set being parsed into memory in one pass.
+
+        If `checkpoint_path` is given, the knowledge base is saved there
+        after every batch, so a crash partway through only loses the
+        batch in progress. `on_batch`, if given, is called after each
+        batch as `on_batch(batch_index, batch_report)`.
+
+        Returns one IngestReport summarizing totals across all batches.
+        """
+        entities_before_all = len(self._graph.entities)
+        relations_before_all = len(self._graph.relations)
+        total_docs = 0
+        total_entities_parsed = 0
+        batch_index = 0
+        batch: list[str | Document] = []
+
+        def flush(pending: list[str | Document]) -> None:
+            nonlocal batch_index, total_docs, total_entities_parsed
+            if not pending:
+                return
+            report = self.ingest(pending)
+            total_docs += report.documents_ingested
+            total_entities_parsed += report.entities_parsed
+            batch_index += 1
+            if checkpoint_path is not None:
+                self.save(checkpoint_path)
+            if on_batch is not None:
+                on_batch(batch_index, report)
+
+        for document in documents:
+            batch.append(document)
+            if len(batch) >= batch_size:
+                flush(batch)
+                batch = []
+        flush(batch)
+
+        return IngestReport(
+            documents_ingested=total_docs,
+            entities_before=entities_before_all,
+            entities_after=len(self._graph.entities),
+            entities_parsed=total_entities_parsed,
+            relations_before=relations_before_all,
+            relations_after=len(self._graph.relations),
+        )
+
     def save(self, path: str) -> None:
         """Write this knowledge base to a .noema bundle at `path`."""
         save_bundle(
@@ -208,7 +251,7 @@ class KnowledgeBase:
         )
 
     @classmethod
-    def load(cls, path: str) -> "KnowledgeBase":
+    def load(cls, path: str) -> KnowledgeBase:
         """Load a knowledge base from a .noema bundle at `path`."""
         loaded = load_bundle(path)
         kb = cls(
@@ -216,11 +259,32 @@ class KnowledgeBase:
             spacy_model=loaded.manifest.get("spacy_model") or SPACY_DEFAULT_MODEL,
         )
         kb._graph = loaded.graph
-        # The bundle already carried a fully-built fact index -- reuse it
-        # directly rather than re-embedding every fact via _ensure_fact_index()
+        # Reuse the bundle's prebuilt fact index instead of re-embedding
         # on the first retrieve() call after a load.
         kb._fact_ids = loaded.fact_ids
         kb._fact_index = loaded.index
+        return kb
+
+    def sync_to_backend(self, backend: GraphBackend) -> None:
+        """Push this knowledge base's full current graph to a persistent
+        backend (e.g. Neo4jBackend, RDFBackend), replacing whatever that
+        backend held before. Use this once a knowledge base outgrows what's
+        comfortable to keep as a single .noema bundle.
+        """
+        write_graph(backend, self._graph)
+
+    @classmethod
+    def load_from_backend(
+        cls,
+        backend: GraphBackend,
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
+        spacy_model: str = SPACY_DEFAULT_MODEL,
+    ) -> KnowledgeBase:
+        """Build a knowledge base by reading a persistent backend's full
+        contents into memory.
+        """
+        kb = cls(embedding_model=embedding_model, spacy_model=spacy_model)
+        kb._graph = read_graph(backend)
         return kb
 
     def retrieve(
@@ -233,14 +297,10 @@ class KnowledgeBase:
         token_model: str = DEFAULT_TOKEN_MODEL,
     ) -> RetrievalResult:
         """Hybrid retrieval: vector search over facts, then graph expansion,
-        then notation assembly under a token budget -- the full "vector
-        search -> graph expansion -> relevant sub-graph -> notation"
-        pipeline from the project plan's workflow diagram.
+        then notation assembly under a token budget.
 
-        `format` controls what `.text` contains: "notation" (default, and
-        the token-efficient choice meant for LLM context injection) or
-        "natural_language" (decoded, for cases where the consuming prompt
-        expects prose rather than compact notation).
+        `format` controls what `.text` contains: "notation" (default,
+        token-efficient) or "natural_language" (decoded prose).
         """
         if format not in ("notation", "natural_language"):
             raise ValueError(

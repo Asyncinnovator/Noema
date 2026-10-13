@@ -55,6 +55,16 @@ anthropic = [
     "anthropic>=0.40.0",
 ]
 
+# Persistent graph backends -- noema.storage.neo4j_backend /
+# .rdf_backend. Each module imports its third-party package lazily --
+# only instantiating Neo4jBackend/RDFBackend requires the matching extra.
+neo4j = [
+    "neo4j>=5.26.0",
+]
+rdf = [
+    "rdflib>=7.1.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
