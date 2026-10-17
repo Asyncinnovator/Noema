@@ -65,6 +65,9 @@ rdf = [
     "rdflib>=7.1.0",
 ]
 
+[project.scripts]
+noema = "noema.cli:app"
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
@@ -93,6 +96,12 @@ packages = ["src/noema"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+[tool.ruff.lint.per-file-ignores]
+# typer.Option()/typer.Argument() calls as parameter defaults are the
+# required way to declare a Typer CLI's options -- not the function-call-
+# as-default-value mistake B008 otherwise flags.
+"src/noema/cli.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
