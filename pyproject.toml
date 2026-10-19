@@ -102,6 +102,8 @@ target-version = "py313"
 # required way to declare a Typer CLI's options -- not the function-call-
 # as-default-value mistake B008 otherwise flags.
 "src/noema/cli.py" = ["B008"]
+"benchmarks/run_benchmark.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["benchmarks"]
