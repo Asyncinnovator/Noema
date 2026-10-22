@@ -3,7 +3,7 @@ backed by a Noema `KnowledgeBase`.
 
 Requires the optional `llamaindex` extra:
 
-    pip install noema[llamaindex]
+    pip install noema-rag[llamaindex]
 
 As with the LangChain integration, the `llama-index-core` import below is
 wrapped in a try/except so this module always imports cleanly; only
@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - exercised only without the extra
 
 _INSTALL_HINT = (
     "NoemaLlamaIndexRetriever requires the optional `llamaindex` extra. "
-    "Install it with:\n\n    pip install noema[llamaindex]\n"
+    "Install it with:\n\n    pip install noema-rag[llamaindex]\n"
 )
 
 

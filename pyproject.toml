@@ -1,10 +1,29 @@
 [project]
-name = "noema"
+name = "noema-rag"
 version = "0.1.0"
 description = "Convert text into compact logical form for token-efficient RAG"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
+keywords = [
+    "rag",
+    "retrieval-augmented-generation",
+    "knowledge-graph",
+    "graphrag",
+    "llm",
+    "prompt-compression",
+    "token-reduction",
+    "nlp",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
 dependencies = [
     # Core pipeline: compress() + KnowledgeBase (parsing, canonicalization,
     # notation, storage, retrieval). torch/sentence-transformers are required,
@@ -15,9 +34,6 @@ dependencies = [
     "rich>=15.0.0",
     "sentence-transformers>=5.7.0",
     "spacy>=3.8.14",
-    # Direct-URL dep, not a separate `spacy download` step -- `uv sync`
-    # exact-syncs and removes anything not declared here (astral-sh/uv#12481).
-    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "tiktoken>=0.13.0",
     "torch>=2.5.0",
     # Pinned <5.0: transformers 5.x breaks fastcoref's model loading
@@ -35,11 +51,6 @@ dependencies = [
 # of model weights on first use.
 advanced-nlp = [
     "fastcoref>=2.1.6",
-]
-
-# For compare_spacy_models.py only.
-compare-models = [
-    "en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl",
 ]
 
 # Framework integrations -- noema.integrations.langchain / .llamaindex /
@@ -72,6 +83,15 @@ noema = "noema.cli:app"
 dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.1",
+    # Direct-URL models can't be published to PyPI, so they live here:
+    # dependency groups aren't part of the published package metadata.
+    # `uv sync` exact-syncs and removes anything not declared
+    # (astral-sh/uv#12481), so the models are declared rather than downloaded.
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+# For compare_spacy_models.py only.
+compare-models = [
+    "en-core-web-md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl",
 ]
 
 [tool.uv.sources]
@@ -86,12 +106,11 @@ explicit = true
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.metadata]
-# Required for the en-core-web-sm/-md direct-URL dependencies above.
-allow-direct-references = true
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/noema"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/benchmarks", "/README.md", "/LICENSE", "/pyproject.toml"]
 
 [tool.ruff]
 line-length = 100

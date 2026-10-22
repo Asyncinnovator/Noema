@@ -3,7 +3,7 @@ Noema `KnowledgeBase`.
 
 Requires the optional `langchain` extra:
 
-    pip install noema[langchain]
+    pip install noema-rag[langchain]
 
 Importing this module never fails for lack of that extra -- the
 `langchain-core` import is wrapped in a try/except, and the class body
@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover - exercised only without the extra
 
 _INSTALL_HINT = (
     "NoemaRetriever requires the optional `langchain` extra. "
-    "Install it with:\n\n    pip install noema[langchain]\n"
+    "Install it with:\n\n    pip install noema-rag[langchain]\n"
 )
 
 

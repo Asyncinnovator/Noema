@@ -71,7 +71,7 @@ class TestLangChainUnavailable:
     def test_instantiation_raises_import_error_with_install_hint(self):
         from noema.integrations.langchain import NoemaRetriever
 
-        with pytest.raises(ImportError, match="pip install noema\\[langchain\\]"):
+        with pytest.raises(ImportError, match="pip install noema-rag\\[langchain\\]"):
             NoemaRetriever(kb=_mock_kb())
 
     def test_module_itself_imports_cleanly(self):
@@ -152,7 +152,7 @@ class TestLlamaIndexUnavailable:
     def test_instantiation_raises_import_error_with_install_hint(self):
         from noema.integrations.llamaindex import NoemaLlamaIndexRetriever
 
-        with pytest.raises(ImportError, match="pip install noema\\[llamaindex\\]"):
+        with pytest.raises(ImportError, match="pip install noema-rag\\[llamaindex\\]"):
             NoemaLlamaIndexRetriever(kb=_mock_kb())
 
     def test_module_itself_imports_cleanly(self):
@@ -249,7 +249,7 @@ class TestCountTokensAnthropic:
 
         with patch.object(tokens_module, "_count_tokens_cl100k", return_value=42) as fallback, \
              patch.dict("sys.modules", {"anthropic": None}):
-            with pytest.warns(UserWarning, match="pip install noema\\[anthropic\\]"):
+            with pytest.warns(UserWarning, match="pip install noema-rag\\[anthropic\\]"):
                 count = tokens_module.count_tokens_anthropic("hello world")
 
         fallback.assert_called_once_with("hello world")

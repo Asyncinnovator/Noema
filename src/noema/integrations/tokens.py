@@ -10,7 +10,7 @@ count against a specific provider's own tokenizer instead:
     count_tokens_anthropic(text, model="claude-sonnet-5")
 
 `count_tokens_anthropic` optionally uses the `anthropic` package (the
-`noema[anthropic]` extra) for an exact count; without it, falls back to
+`noema-rag[anthropic]` extra) for an exact count; without it, falls back to
 the cl100k_base estimate with a warning.
 """
 
@@ -47,7 +47,7 @@ def count_tokens_anthropic(
     """Count tokens the way a given Anthropic (Claude) model would.
 
     Requires calling Anthropic's `count_tokens` API (the `anthropic`
-    package, the `noema[anthropic]` extra, and a valid API key, passed
+    package, the `noema-rag[anthropic]` extra, and a valid API key, passed
     explicitly or read from `ANTHROPIC_API_KEY`). Without the package, or
     if the API call fails, falls back to the cl100k_base-based estimate
     and emits a `UserWarning`.
@@ -61,7 +61,7 @@ def count_tokens_anthropic(
         warnings.warn(
             "The `anthropic` package isn't installed, so count_tokens_anthropic() "
             "is returning a cl100k_base-based estimate rather than an exact "
-            "Claude token count. Install it with `pip install noema[anthropic]` "
+            "Claude token count. Install it with `pip install noema-rag[anthropic]` "
             "for exact counts.",
             stacklevel=2,
         )

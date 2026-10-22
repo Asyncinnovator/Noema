@@ -9,7 +9,7 @@
 Noema is a Python library for **token-efficient RAG**. It turns documents into a deduplicated
 **knowledge graph** and sends your LLM only the facts a question needs, in a compact notation.
 
-[![PyPI version](https://img.shields.io/badge/pypi-v0.1.0-blue)](https://pypi.org/project/noema/)
+[![PyPI version](https://img.shields.io/pypi/v/noema-rag)](https://pypi.org/project/noema-rag/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)](pyproject.toml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000)](https://github.com/astral-sh/ruff)
@@ -22,7 +22,7 @@ Noema is a Python library for **token-efficient RAG**. It turns documents into a
 
 **Noema** is a Python library for knowledge graph construction, LLM context compression and
 Retrieval-Augmented Generation (RAG). Instead of treating documents as flat strings, it parses
-text into a structured logical form of **entities, relations and events**, and organizes that
+text into a structured logical form of **entities and relations**, and organizes that
 structure into a canonical, deduplicated graph.
 
 At query time, only the sub-graph relevant to the question is rendered as a short,
@@ -59,7 +59,7 @@ decoding it back to natural language and scoring the result (round-trip validati
 
 ## Features
 
-- **Text to semantic graph**: entity, relation and event extraction with optional coreference resolution
+- **Text to semantic graph**: entity and relation extraction, with optional coreference resolution and transformer-based relations
 - **Canonicalization and deduplication**: one canonical node per fact, across one document or many
 - **Compact notation**: a low-token representation for LLM context injection, decodable back to natural language
 - **Hybrid retrieval**: vector similarity search plus multi-hop graph traversal, under a `max_tokens` budget

@@ -30,7 +30,7 @@ def _require_driver() -> None:
     if _neo4j is None:
         raise ImportError(
             "Neo4jBackend requires the 'neo4j' package. Install it with: "
-            "pip install noema[neo4j]"
+            "pip install noema-rag[neo4j]"
         )
 
 

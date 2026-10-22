@@ -32,7 +32,7 @@ def _require_rdflib() -> None:
     if rdflib is None:
         raise ImportError(
             "RDFBackend requires the 'rdflib' package. Install it with: "
-            "pip install noema[rdf]"
+            "pip install noema-rag[rdf]"
         )
 
 
