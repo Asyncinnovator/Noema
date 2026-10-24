@@ -5,6 +5,7 @@ description = "Convert text into compact logical form for token-efficient RAG"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+authors = [{ name = "Rishu", email = "sheth.rishu50@gmail.com" }]
 requires-python = ">=3.13"
 keywords = [
     "rag",
@@ -44,6 +45,12 @@ dependencies = [
     # typer declares it anymore (explosion/spaCy#13971).
     "click>=8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Asyncinnovator/Noema"
+Documentation = "https://github.com/Asyncinnovator/Noema/wiki"
+Issues = "https://github.com/Asyncinnovator/Noema/issues"
+Changelog = "https://github.com/Asyncinnovator/Noema/releases"
 
 [project.optional-dependencies]
 # Coreference resolution, transformer-based relation extraction (REBEL),

@@ -1386,12 +1386,11 @@ wheels = [
 ]
 
 [[package]]
-name = "noema"
+name = "noema-rag"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
-    { name = "en-core-web-sm" },
     { name = "faiss-cpu" },
     { name = "networkx" },
     { name = "pydantic" },
@@ -1412,9 +1411,6 @@ advanced-nlp = [
 anthropic = [
     { name = "anthropic" },
 ]
-compare-models = [
-    { name = "en-core-web-md" },
-]
 langchain = [
     { name = "langchain-core" },
 ]
@@ -1429,7 +1425,11 @@ rdf = [
 ]
 
 [package.dev-dependencies]
+compare-models = [
+    { name = "en-core-web-md" },
+]
 dev = [
+    { name = "en-core-web-sm" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -1438,8 +1438,6 @@ dev = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40.0" },
     { name = "click", specifier = ">=8.0" },
-    { name = "en-core-web-md", marker = "extra == 'compare-models'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" },
-    { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "faiss-cpu", specifier = ">=1.15.0" },
     { name = "fastcoref", marker = "extra == 'advanced-nlp'", specifier = ">=2.1.6" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3.0" },
@@ -1456,10 +1454,12 @@ requires-dist = [
     { name = "transformers", specifier = ">=4.40,<5.0" },
     { name = "typer", specifier = ">=0.27.1" },
 ]
-provides-extras = ["advanced-nlp", "compare-models", "langchain", "llamaindex", "anthropic", "neo4j", "rdf"]
+provides-extras = ["advanced-nlp", "langchain", "llamaindex", "anthropic", "neo4j", "rdf"]
 
 [package.metadata.requires-dev]
+compare-models = [{ name = "en-core-web-md", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }]
 dev = [
+    { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.16.1" },
 ]
