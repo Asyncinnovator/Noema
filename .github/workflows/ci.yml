@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to the same branch or pull request cancels the older run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_PYTHON: "3.13"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: uv python install
+      # Only the dev dependency group is installed, so linting does not
+      # download torch. The ruff version comes from uv.lock.
+      - name: Ruff
+        run: uv run --locked --only-group dev ruff check .
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: uv python install
+      - name: Install dependencies and optional extras
+        run: >
+          uv sync --locked
+          --extra rdf --extra neo4j --extra langchain --extra llamaindex --extra anthropic
+      - name: Pytest
+        run: uv run pytest -q
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python
+        run: uv python install
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Check package metadata
+        run: uvx twine check dist/*
+      # Dependencies come from the lock file (CPU-only torch). The built
+      # wheel then replaces the editable install, so the smoke test runs
+      # the packaged code and not the source tree.
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Smoke-test the built wheel
+        run: |
+          uv pip install --python .venv/bin/python --no-deps --force-reinstall dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/.venv/bin/noema" --help
+          "$GITHUB_WORKSPACE/.venv/bin/python" -c "import noema; print(noema.__file__)"
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
