@@ -10,15 +10,15 @@ that cross-batch merging works.
 from __future__ import annotations
 
 import importlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-import noema.canonicalize.dedup as dedup
-import noema.retrieval.vector_search as vector_search
-import noema.storage.bundle as bundle
+from noema.canonicalize import dedup
+from noema.retrieval import vector_search
 from noema.schema import Document
+from noema.storage import bundle
 from noema.storage.knowledge_base import IngestReport, KnowledgeBase, _normalize_documents
 
 compress_module = importlib.import_module("noema.compress")

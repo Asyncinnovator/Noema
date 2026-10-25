@@ -2,31 +2,20 @@
 
     company_kb.noema
     |-- graph.json        canonical entities + relations + events, with
-    |                     per-mention provenance and confidence (already
-    |                     present on Entity/Relation/Event -- this module
-    |                     just serializes what schema.py already tracks)
+    |                     per-mention provenance and confidence
     |-- embeddings.bin    float32 vectors, one row per relation ("fact"),
     |                     row order matching manifest.json's fact_ids
     |-- index.faiss       a faiss IndexFlatIP over those same vectors, for
-    |                     fast similarity search at retrieval time (Phase 4)
+    |                     similarity search at retrieval time
     `-- manifest.json     schema version, counts, embedding model name/dim,
-                          fact_ids (the row-order -> Relation.id mapping),
+                          fact_ids (row-order -> Relation.id mapping),
                           source document ids
 
-Per the project plan: "embeddings.bin / index.faiss index the compact
-notation form of each fact (not raw text) -- smaller and more precise to
-search than embedding whole paragraphs." A "fact" here is one Relation.
-Each fact's embedded text is that single relation rendered through
-notation.encoder in isolation (just its two entities + itself) -- not the
-relation's raw source sentence -- so what gets indexed is exactly the same
-compact representation compress() produces, keeping the token-savings and
-retrieval-quality properties on the same representation rather than two
-separate ones (see project plan, "Why Noema Is Better").
-
-IndexFlatIP (exact inner-product search over normalized vectors, i.e. exact
-cosine similarity) is used rather than an approximate index -- correctness
-over speed for now. Swapping in an approximate index (IVF, HNSW) for large
-knowledge bases is a Phase 7 (scale) concern, not Phase 3's.
+A "fact" is one Relation. Each fact's embedded text is that relation
+rendered through notation.encoder in isolation (just its two entities plus
+itself), not its raw source sentence. IndexFlatIP (exact inner-product
+search over normalized vectors) is used rather than an approximate index,
+favoring correctness over speed.
 """
 
 from __future__ import annotations
@@ -34,7 +23,7 @@ from __future__ import annotations
 import json
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 
 import faiss
@@ -47,9 +36,8 @@ from noema.schema import Entity, Event, Relation
 
 SCHEMA_VERSION = "1"
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-# Dimension of the default model above. Used only for the zero-fact edge
-# case, so an index can still be constructed without invoking the model
-# just to learn its output size for an empty knowledge base.
+# Dimension of the default model above, used for the zero-fact edge case so
+# an empty index can be built without invoking the model.
 DEFAULT_EMBEDDING_DIM = 384
 
 _GRAPH_ENTRY = "graph.json"
@@ -77,9 +65,7 @@ class LoadedBundle:
 
 def graph_to_dict(graph: SemanticGraph) -> dict:
     """Serialize a SemanticGraph's entities/relations/events to plain dicts,
-    suitable for json.dumps. Uses each schema type's own pydantic
-    serialization rather than hand-rolling field lists, so this stays in
-    sync with schema.py automatically as fields are added.
+    suitable for json.dumps.
     """
     return {
         "entities": [e.model_dump(mode="json") for e in graph.entities],
@@ -90,8 +76,8 @@ def graph_to_dict(graph: SemanticGraph) -> dict:
 
 def graph_from_dict(data: dict) -> SemanticGraph:
     """Inverse of graph_to_dict. Entities are added before relations/events
-    that reference them, matching SemanticGraph.add_relation/add_event's
-    requirement that referenced entities already exist in the graph.
+    that reference them, since SemanticGraph requires referenced entities
+    to already exist in the graph.
     """
     graph = SemanticGraph()
     for entity_data in data.get("entities", []):
@@ -107,10 +93,9 @@ def graph_from_dict(data: dict) -> SemanticGraph:
 
 
 def _fact_notation(graph: SemanticGraph, relation: Relation) -> str:
-    """Render one relation, in isolation, as its own tiny notation block --
-    just its subject and object entities plus itself. This is what gets
-    embedded for that fact: the same compact form compress() would produce
-    for it, not its raw source sentence.
+    """Render one relation, in isolation, as its own tiny notation block
+    (its subject and object entities plus itself). This is what gets
+    embedded for that fact, not its raw source sentence.
     """
     subject = graph.get_entity(relation.subject_id)
     obj = graph.get_entity(relation.object_id)
@@ -128,9 +113,9 @@ def build_fact_index(
     over the result.
 
     Returns (fact_ids, embeddings, index) where fact_ids[i] is the
-    Relation.id whose vector is embeddings[i] / index row i -- this mapping
-    is what manifest.json's fact_ids field preserves across save/load, since
-    faiss indices don't carry external ids on their own with IndexFlatIP.
+    Relation.id whose vector is embeddings[i] / index row i. This mapping
+    is preserved in manifest.json's fact_ids field across save/load, since
+    IndexFlatIP doesn't carry external ids on its own.
     """
     relations = graph.relations
     if not relations:
@@ -159,12 +144,9 @@ def save_bundle(
 ) -> None:
     """Write a SemanticGraph to a .noema bundle at `path`.
 
-    `spacy_model` is recorded in the manifest purely as metadata about
-    which spaCy pipeline produced this graph's entities/relations -- this
-    function doesn't parse anything itself, so it can't use or validate
-    that choice, only note it down so KnowledgeBase.load() can restore the
-    same setting for future ingests instead of silently reverting to
-    whatever the default happens to be.
+    `spacy_model` is recorded in the manifest as metadata about which
+    spaCy pipeline produced this graph's entities/relations, so
+    KnowledgeBase.load() can restore the same setting for future ingests.
     """
     fact_ids, embeddings, index = build_fact_index(graph, model_name)
 
@@ -174,7 +156,7 @@ def save_bundle(
 
     manifest = {
         "schema_version": SCHEMA_VERSION,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "embedding_model": model_name,
         "spacy_model": spacy_model,
         "embedding_dim": embeddings.shape[1] if embeddings.size else DEFAULT_EMBEDDING_DIM,

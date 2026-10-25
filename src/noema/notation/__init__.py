@@ -3,4 +3,4 @@
 from noema.notation.decoder import ParsedNotation, decode, parse_notation
 from noema.notation.encoder import encode_graph
 
-__all__ = ["encode_graph", "decode", "parse_notation", "ParsedNotation"]
+__all__ = ["ParsedNotation", "decode", "encode_graph", "parse_notation"]

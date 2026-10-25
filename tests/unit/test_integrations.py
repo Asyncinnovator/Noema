@@ -247,10 +247,12 @@ class TestCountTokensAnthropic:
     def test_without_anthropic_package_falls_back_with_warning(self):
         import noema.integrations.tokens as tokens_module
 
-        with patch.object(tokens_module, "_count_tokens_cl100k", return_value=42) as fallback, \
-             patch.dict("sys.modules", {"anthropic": None}):
-            with pytest.warns(UserWarning, match="pip install noema-rag\\[anthropic\\]"):
-                count = tokens_module.count_tokens_anthropic("hello world")
+        with (
+            patch.object(tokens_module, "_count_tokens_cl100k", return_value=42) as fallback,
+            patch.dict("sys.modules", {"anthropic": None}),
+            pytest.warns(UserWarning, match="pip install noema-rag\\[anthropic\\]"),
+        ):
+            count = tokens_module.count_tokens_anthropic("hello world")
 
         fallback.assert_called_once_with("hello world")
         assert count == 42
@@ -280,10 +282,12 @@ class TestCountTokensAnthropic:
         fake_client = MagicMock()
         fake_client.messages.count_tokens.side_effect = RuntimeError("no api key")
 
-        with patch("anthropic.Anthropic", return_value=fake_client), \
-             patch.object(tokens_module, "_count_tokens_cl100k", return_value=11) as fallback:
-            with pytest.warns(UserWarning, match="cl100k_base-based estimate"):
-                count = tokens_module.count_tokens_anthropic("hello world")
+        with (
+            patch("anthropic.Anthropic", return_value=fake_client),
+            patch.object(tokens_module, "_count_tokens_cl100k", return_value=11) as fallback,
+            pytest.warns(UserWarning, match="cl100k_base-based estimate"),
+        ):
+            count = tokens_module.count_tokens_anthropic("hello world")
 
         fallback.assert_called_once_with("hello world")
         assert count == 11

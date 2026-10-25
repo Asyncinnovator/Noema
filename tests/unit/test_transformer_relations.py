@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import noema.parser.transformer_relations as tr
 from noema.schema import Document, Entity, EntityType
 

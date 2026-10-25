@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-import noema.storage.bundle as bundle
 from noema.graph.builder import SemanticGraph
 from noema.schema import Entity, EntityType, Event, Relation
+from noema.storage import bundle
 
 
 class _FakeEmbeddingModel:
@@ -79,19 +79,19 @@ class TestBuildFactIndex:
     def test_fact_ids_match_relation_ids_in_order(self):
         graph = _build_graph()
         with patch.object(bundle, "_load_model", return_value=_FakeEmbeddingModel()):
-            fact_ids, embeddings, index = bundle.build_fact_index(graph)
+            fact_ids, _embeddings, _index = bundle.build_fact_index(graph)
         assert fact_ids == [r.id for r in graph.relations]
 
     def test_embeddings_row_count_matches_relation_count(self):
         graph = _build_graph()
         with patch.object(bundle, "_load_model", return_value=_FakeEmbeddingModel(dim=6)):
-            fact_ids, embeddings, index = bundle.build_fact_index(graph)
+            _fact_ids, embeddings, _index = bundle.build_fact_index(graph)
         assert embeddings.shape == (2, 6)
 
     def test_faiss_index_contains_all_facts(self):
         graph = _build_graph()
         with patch.object(bundle, "_load_model", return_value=_FakeEmbeddingModel()):
-            fact_ids, embeddings, index = bundle.build_fact_index(graph)
+            _fact_ids, _embeddings, index = bundle.build_fact_index(graph)
         assert index.ntotal == 2
 
     def test_zero_relations_does_not_call_the_model(self):

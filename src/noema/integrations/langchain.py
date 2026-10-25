@@ -64,7 +64,8 @@ class NoemaRetriever(BaseRetriever):  # type: ignore[misc]
     max_tokens: int = 200
     format: str = "notation"
 
-    model_config = {"arbitrary_types_allowed": True}
+    # pydantic reads model_config as a plain dict, not a ClassVar.
+    model_config = {"arbitrary_types_allowed": True}  # noqa: RUF012
 
     def __init__(self, **data: Any) -> None:
         if not _LANGCHAIN_AVAILABLE:
@@ -72,17 +73,17 @@ class NoemaRetriever(BaseRetriever):  # type: ignore[misc]
         super().__init__(**data)
 
     def _get_relevant_documents(
-        self, query: str, *, run_manager: "CallbackManagerForRetrieverRun"
-    ) -> list["Document"]:
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> list[Document]:
         return self._retrieve_as_documents(query)
 
     async def _aget_relevant_documents(
-        self, query: str, *, run_manager: "CallbackManagerForRetrieverRun"
-    ) -> list["Document"]:
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> list[Document]:
         # KnowledgeBase.retrieve() is synchronous (no I/O to await on).
         return self._retrieve_as_documents(query)
 
-    def _retrieve_as_documents(self, query: str) -> list["Document"]:
+    def _retrieve_as_documents(self, query: str) -> list[Document]:
         result = self.kb.retrieve(
             query,
             top_k=self.top_k,

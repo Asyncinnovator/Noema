@@ -14,9 +14,9 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-import noema.canonicalize.dedup as dedup
+from noema.canonicalize import dedup
 from noema.graph.builder import SemanticGraph
-from noema.schema import Document, Entity, EntityType, Event, ParsedDocument, Relation
+from noema.schema import Entity, EntityType, Event, Relation
 
 
 class _FakeEmbeddingModel:

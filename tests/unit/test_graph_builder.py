@@ -123,23 +123,23 @@ class TestNeighbors:
         return graph, google, page, mtv
 
     def test_one_hop_neighbors(self):
-        graph, google, page, mtv = self._build_star_graph()
+        graph, google, _page, _mtv = self._build_star_graph()
         neighbor_names = {e.name for e in graph.neighbors(google.id, hops=1)}
         assert neighbor_names == {"Larry Page", "Mountain View"}
 
     def test_traversal_is_direction_agnostic(self):
         # Larry Page only has an OUTGOING edge to Google, but neighbors()
         # must still find Google when starting from Larry Page.
-        graph, google, page, mtv = self._build_star_graph()
+        graph, _google, page, _mtv = self._build_star_graph()
         neighbor_names = {e.name for e in graph.neighbors(page.id, hops=1)}
         assert "Google" in neighbor_names
 
     def test_zero_hops_returns_empty(self):
-        graph, google, page, mtv = self._build_star_graph()
+        graph, google, _page, _mtv = self._build_star_graph()
         assert graph.neighbors(google.id, hops=0) == []
 
     def test_two_hops_reaches_indirect_entity(self):
-        graph, google, page, mtv = self._build_star_graph()
+        graph, _google, page, _mtv = self._build_star_graph()
         neighbor_names = {e.name for e in graph.neighbors(page.id, hops=2)}
         assert "Mountain View" in neighbor_names
 

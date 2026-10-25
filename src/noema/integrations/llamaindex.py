@@ -77,7 +77,7 @@ class NoemaLlamaIndexRetriever(BaseRetriever):  # type: ignore[misc]
         self._format = format
         super().__init__(**kwargs)
 
-    def _retrieve(self, query_bundle: "QueryBundle") -> list["NodeWithScore"]:
+    def _retrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
         result = self._kb.retrieve(
             query_bundle.query_str,
             top_k=self._top_k,
@@ -101,6 +101,6 @@ class NoemaLlamaIndexRetriever(BaseRetriever):  # type: ignore[misc]
         )
         return [NodeWithScore(node=node, score=best_score)]
 
-    async def _aretrieve(self, query_bundle: "QueryBundle") -> list["NodeWithScore"]:
+    async def _aretrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
         # Synchronous under the hood -- no I/O to await.
         return self._retrieve(query_bundle)

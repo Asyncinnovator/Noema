@@ -5,6 +5,7 @@ rich-formatted output and a progress bar for long-running ingestion. Install
 with the project itself; the `noema` command becomes available on PATH.
 """
 
+# ruff: noqa: B008
 from __future__ import annotations
 
 from pathlib import Path

@@ -16,9 +16,9 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-import noema.canonicalize.dedup as dedup
-import noema.validator.roundtrip as roundtrip
+from noema.canonicalize import dedup
 from noema.compress import CompressResult, _saved_percent, compress, count_tokens
+from noema.validator import roundtrip
 
 # Not `import noema.compress as compress_module`: since noema/__init__.py
 # does `from noema.compress import compress`, `noema.compress` resolves to

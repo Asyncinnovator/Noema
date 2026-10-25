@@ -7,12 +7,12 @@ behavior can be tested precisely.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-import noema.validator.nli as nli
+from noema.validator import nli
 
 
 class _FakeCrossEncoder:

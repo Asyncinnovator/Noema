@@ -2,4 +2,4 @@
 
 from noema.validator.roundtrip import ValidationResult, validate
 
-__all__ = ["validate", "ValidationResult"]
+__all__ = ["ValidationResult", "validate"]

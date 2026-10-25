@@ -65,16 +65,13 @@ class TestExpandFromFacts:
     def test_hops_limits_expansion_distance(self):
         graph, entities, relations = _build_chain()
         expanded = expand_from_facts(graph, [relations[1].id], hops=1)
-        # E is two hops from the seed (via A or D) in a longer chain --
-        # verify a 4-hop-away node is excluded when hops=1 by checking D's
-        # far neighbor isn't reachable in this 4-node chain (nothing IS two
-        # hops away here, so assert the *set* stays exactly the 1-hop set).
+        # 4-node chain, so hops=1 from the middle already reaches every node.
         assert entities[0].id in expanded.entity_ids
         assert entities[3].id in expanded.entity_ids
-        assert len(expanded.entity_ids) == 4  # nothing further out to exclude in this graph
+        assert len(expanded.entity_ids) == 4
 
     def test_seed_relation_ids_recorded(self):
-        graph, entities, relations = _build_chain()
+        graph, _entities, relations = _build_chain()
         expanded = expand_from_facts(graph, [relations[1].id], hops=1)
         assert expanded.seed_relation_ids == {relations[1].id}
 
@@ -89,23 +86,23 @@ class TestExpandFromFacts:
         }
 
     def test_unknown_relation_id_is_skipped_not_raised(self):
-        graph, entities, relations = _build_chain()
+        graph, _entities, _relations = _build_chain()
         expanded = expand_from_facts(graph, ["rel_does_not_exist"], hops=1)
         assert expanded.entity_ids == set()
         assert expanded.seed_relation_ids == set()
 
     def test_mix_of_known_and_unknown_relation_ids(self):
-        graph, entities, relations = _build_chain()
+        graph, _entities, relations = _build_chain()
         expanded = expand_from_facts(graph, [relations[0].id, "rel_missing"], hops=0)
         assert expanded.seed_relation_ids == {relations[0].id}
 
     def test_empty_seed_list_returns_empty_result(self):
-        graph, entities, relations = _build_chain()
+        graph, _entities, _relations = _build_chain()
         expanded = expand_from_facts(graph, [], hops=1)
         assert expanded == ExpandedSubgraph()
 
     def test_multi_source_finds_entity_neither_seed_touches_directly(self):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, leaves, relations = _build_star()
         # Seed on leaf0's and leaf1's relations; leaf2 is only reachable
         # THROUGH the shared center, not directly from either seed.
         expanded = expand_from_facts(graph, [relations[0].id, relations[1].id], hops=1)
@@ -113,7 +110,7 @@ class TestExpandFromFacts:
         assert expanded.entity_distance[leaves[2].id] == 1
 
     def test_result_type_is_expanded_subgraph(self):
-        graph, entities, relations = _build_chain()
+        graph, _entities, relations = _build_chain()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         assert isinstance(expanded, ExpandedSubgraph)
 
@@ -132,7 +129,7 @@ class TestRelationsWithin:
         assert relations[1] not in result  # B->C excluded, C missing
 
     def test_empty_entity_set_returns_no_relations(self):
-        graph, entities, relations = _build_chain()
+        graph, _entities, _relations = _build_chain()
         assert relations_within(graph, set()) == []
 
     def test_all_entities_included_returns_all_relations(self):

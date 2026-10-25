@@ -53,27 +53,27 @@ def _build_star() -> tuple[SemanticGraph, Entity, list[Entity], list[Relation]]:
 
 class TestAssembleBasic:
     def test_generous_budget_includes_everything(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=1000)
         assert len(result.relation_ids) == 3
         assert result.truncated is False
 
     def test_result_type_is_assembled_context(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=1000)
         assert isinstance(result, AssembledContext)
 
     def test_notation_contains_included_entities(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=1000)
         assert "Center" in result.notation
         assert "Leaf0" in result.notation
 
     def test_token_count_matches_notation(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=1000)
         assert result.token_count == len(result.notation.split())
@@ -81,13 +81,13 @@ class TestAssembleBasic:
 
 class TestAssemblePriority:
     def test_seed_relation_always_included_under_tight_budget(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=15)
         assert relations[0].id in result.relation_ids
 
     def test_tight_budget_truncates(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=15)
         assert result.truncated is True
@@ -112,14 +112,14 @@ class TestAssemblePriority:
 
 class TestAssembleEdgeCases:
     def test_zero_max_tokens_yields_empty_notation(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, relations = _build_star()
         expanded = expand_from_facts(graph, [relations[0].id], hops=1)
         result = assemble(graph, expanded, max_tokens=0)
         assert result.notation == ""
         assert result.truncated is True
 
     def test_no_seeds_yields_empty_untruncated_result(self, patched_tokenizer):
-        graph, center, leaves, relations = _build_star()
+        graph, _center, _leaves, _relations = _build_star()
         result = assemble(graph, ExpandedSubgraph(), max_tokens=1000)
         assert result.notation == ""
         assert result.truncated is False

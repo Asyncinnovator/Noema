@@ -5,12 +5,12 @@ from noema.retrieval.expand import ExpandedSubgraph, expand_from_facts, relation
 from noema.retrieval.vector_search import FactMatch, embed_query, search_facts
 
 __all__ = [
-    "search_facts",
-    "embed_query",
+    "AssembledContext",
+    "ExpandedSubgraph",
     "FactMatch",
+    "assemble",
+    "embed_query",
     "expand_from_facts",
     "relations_within",
-    "ExpandedSubgraph",
-    "assemble",
-    "AssembledContext",
+    "search_facts",
 ]

@@ -6,13 +6,13 @@ Embeddings are mocked for the same reason as elsewhere in this suite
 
 from __future__ import annotations
 
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import faiss
 import numpy as np
-import pytest
 
-import noema.retrieval.vector_search as vector_search
+from noema.retrieval import vector_search
 from noema.retrieval.vector_search import FactMatch, search_facts
 
 
@@ -22,7 +22,7 @@ class _KeywordModel:
     relationships between queries and fact texts.
     """
 
-    VOCAB = ["ceo", "found", "headquarter", "other"]
+    VOCAB: ClassVar[list[str]] = ["ceo", "found", "headquarter", "other"]
 
     def encode(self, texts, normalize_embeddings=True):
         vecs = []

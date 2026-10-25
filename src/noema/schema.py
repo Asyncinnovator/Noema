@@ -1,9 +1,6 @@
-"""Core data schema shared across Noema's pipeline stages.
-
-Every stage (parser -> graph -> canonicalize -> notation -> storage) operates
-on these types, so they live at the package root rather than inside any one
-subpackage. Built on pydantic v2 for validation and easy (de)serialization
-to graph.json.
+"""Core data types shared across Noema's pipeline stages: parser, graph,
+canonicalize, notation, storage. Built on pydantic for validation and
+(de)serialization to graph.json.
 """
 
 from __future__ import annotations
@@ -22,10 +19,7 @@ def _new_id(prefix: str) -> str:
 
 class EntityType(str, Enum):
     """Coarse entity types, aligned with spaCy's default NER labels.
-
-    Kept intentionally small for Phase 1. Domain-specific types can be
-    added later without breaking existing graphs (unknown labels fall
-    back to OTHER).
+    Unrecognized labels fall back to OTHER.
     """
 
     PERSON = "PERSON"
@@ -39,7 +33,7 @@ class EntityType(str, Enum):
     OTHER = "OTHER"
 
     @classmethod
-    def from_spacy_label(cls, label: str) -> "EntityType":
+    def from_spacy_label(cls, label: str) -> EntityType:
         try:
             return cls(label)
         except ValueError:
@@ -49,9 +43,8 @@ class EntityType(str, Enum):
 class SourceSpan(BaseModel):
     """A single mention of an entity/relation/event in a source document.
 
-    Provenance is tracked per-mention (not just per-fact) so that dedup and
-    the round-trip validator can trace any canonical fact back to the
-    original text it was derived from.
+    Tracked per-mention so dedup and the round-trip validator can trace a
+    canonical fact back to the original text.
     """
 
     doc_id: str
@@ -63,9 +56,8 @@ class SourceSpan(BaseModel):
 class Entity(BaseModel):
     """A canonical entity node.
 
-    `id` is stable identity used by Relation/Event to reference this entity.
-    `aliases` accumulates alternate surface forms discovered during
-    canonicalization (e.g. "Google" / "Alphabet's Google" / "the company").
+    `id` identifies this entity for Relation/Event references. `aliases`
+    accumulates alternate surface forms found during canonicalization.
     """
 
     id: str = Field(default_factory=lambda: _new_id("ent"))
@@ -84,9 +76,8 @@ class Entity(BaseModel):
 class Relation(BaseModel):
     """A subject-predicate-object fact linking two entities.
 
-    `predicate` is a normalized, lowercase, snake_case verb/relation label
-    (e.g. "founded", "ceo_of", "acquired"), not raw verb text. Normalization
-    happens in the parser; this class only stores the result.
+    `predicate` is a normalized, lowercase, snake_case label (e.g.
+    "founded", "ceo_of"), produced by the parser.
     """
 
     id: str = Field(default_factory=lambda: _new_id("rel"))
@@ -100,17 +91,14 @@ class Relation(BaseModel):
 
 
 class Event(BaseModel):
-    """A higher-order fact involving multiple entities and/or a time anchor.
-
-    Events are distinguished from Relations in that they may have more than
-    two participants and typically anchor to a point or span in time
-    (e.g. "Google IPO'd on 2004-08-19" with participants=[Google]).
+    """A fact involving multiple entities and/or a time anchor, unlike a
+    Relation which links exactly two entities.
     """
 
     id: str = Field(default_factory=lambda: _new_id("evt"))
     label: str
     participant_ids: list[str] = Field(default_factory=list)
-    time: str | None = None  # kept as free text in Phase 1; normalized later
+    time: str | None = None  # free text for now; normalized later
     mentions: list[SourceSpan] = Field(default_factory=list)
     confidence: float = 1.0
 
@@ -124,8 +112,8 @@ class Document(BaseModel):
 
 
 class ParsedDocument(BaseModel):
-    """Output of the parser stage for one document: raw extractions before
-    canonicalization/dedup against the rest of the knowledge base.
+    """Raw per-document extractions, before canonicalization/dedup against
+    the rest of the knowledge base.
     """
 
     document: Document

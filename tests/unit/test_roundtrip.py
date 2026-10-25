@@ -14,7 +14,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-import noema.validator.roundtrip as roundtrip
+from noema.validator import roundtrip
 
 
 class _FakeEmbeddingModel:
