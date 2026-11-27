@@ -17,6 +17,7 @@ import os
 from collections.abc import Iterator
 
 from noema.schema import Entity, EntityType, Event, Relation, SourceSpan
+from noema.storage._atomic import atomic_write
 from noema.storage.backends import GraphBackend
 
 try:
@@ -82,7 +83,10 @@ class RDFBackend(GraphBackend):
         target = path or self._path
         if target is None:
             raise ValueError("No path given to RDFBackend() or save()")
-        self._graph.serialize(destination=target, format=self._format)
+        # Atomic: a serialization error (e.g. an unserializable predicate)
+        # must not truncate the file the constructor will re-parse next time.
+        with atomic_write(target) as fh:
+            self._graph.serialize(destination=fh, format=self._format)
 
     def flush(self) -> None:
         if self._path is not None:

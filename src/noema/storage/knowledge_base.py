@@ -22,6 +22,8 @@ and load_from_backend() move the graph to/from a persistent GraphBackend
 
 from __future__ import annotations
 
+import re
+import warnings
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
@@ -36,7 +38,19 @@ from noema.retrieval.expand import expand_from_facts
 from noema.retrieval.vector_search import FactMatch, search_facts
 from noema.schema import Document, ParsedDocument
 from noema.storage.backends import GraphBackend, read_graph, write_graph
-from noema.storage.bundle import DEFAULT_EMBEDDING_MODEL, build_fact_index, load_bundle, save_bundle
+from noema.storage.bundle import (
+    DEFAULT_EMBEDDING_MODEL,
+    BundleError,
+    build_fact_index,
+    load_bundle,
+    save_bundle,
+)
+
+# A spaCy pipeline name as published on PyPI/GitHub (en_core_web_sm,
+# de_dep_news_trf, xx_ent_wiki_sm, ...). A manifest value matching this can
+# only resolve to a pipeline package the user has already installed; paths,
+# URLs and dotted module names do not match and are never taken from a file.
+_SPACY_PACKAGE_NAME = re.compile(r"^[a-z]{2,3}_[a-z0-9]+_[a-z0-9]+_(?:sm|md|lg|trf)$")
 
 # Default chunk size for ingest_stream(): how many documents are parsed and
 # canonicalized together before moving to the next chunk.
@@ -251,13 +265,63 @@ class KnowledgeBase:
         )
 
     @classmethod
-    def load(cls, path: str) -> KnowledgeBase:
-        """Load a knowledge base from a .noema bundle at `path`."""
+    def load(
+        cls,
+        path: str,
+        *,
+        embedding_model: str | None = None,
+        spacy_model: str | None = None,
+        trust_manifest_models: bool = False,
+    ) -> KnowledgeBase:
+        """Load a knowledge base from a .noema bundle at `path`.
+
+        The bundle's manifest records which embedding and spaCy models built
+        it, but a model name read from a file is an instruction to download
+        or import code, so it is not followed blindly:
+
+        - `embedding_model` / `spacy_model`, when given, always win.
+        - Otherwise a spaCy name is restored from the manifest only if it
+          looks like an installed-package name (never a path or URL), and an
+          embedding model only if it is the default one.
+        - Any other manifest embedding model raises `BundleError` asking for
+          an explicit `embedding_model=` (retrieval with a different model
+          than the index was built with returns wrong results), and any
+          other spaCy name falls back to the default with a warning.
+        - `trust_manifest_models=True` restores both names verbatim; use it
+          only for bundles you created or otherwise trust.
+        """
         loaded = load_bundle(path)
-        kb = cls(
-            embedding_model=loaded.manifest.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
-            spacy_model=loaded.manifest.get("spacy_model") or SPACY_DEFAULT_MODEL,
-        )
+        manifest_embedding = loaded.manifest.get("embedding_model")
+        manifest_spacy = loaded.manifest.get("spacy_model")
+
+        if embedding_model is None:
+            if not manifest_embedding:
+                embedding_model = DEFAULT_EMBEDDING_MODEL
+            elif trust_manifest_models or manifest_embedding == DEFAULT_EMBEDDING_MODEL:
+                embedding_model = manifest_embedding
+            else:
+                raise BundleError(
+                    f"Bundle was built with embedding model {manifest_embedding!r}. Pass "
+                    f"embedding_model={manifest_embedding!r} to KnowledgeBase.load() if you "
+                    "trust this bundle (or trust_manifest_models=True); the model name is "
+                    "not loaded automatically from the file."
+                )
+
+        if spacy_model is None:
+            if not manifest_spacy:
+                spacy_model = SPACY_DEFAULT_MODEL
+            elif trust_manifest_models or _SPACY_PACKAGE_NAME.match(manifest_spacy):
+                spacy_model = manifest_spacy
+            else:
+                warnings.warn(
+                    f"Ignoring spaCy model {manifest_spacy!r} recorded in the bundle (not a "
+                    f"package name); using {SPACY_DEFAULT_MODEL!r}. Pass spacy_model= or "
+                    "trust_manifest_models=True to override.",
+                    stacklevel=2,
+                )
+                spacy_model = SPACY_DEFAULT_MODEL
+
+        kb = cls(embedding_model=embedding_model, spacy_model=spacy_model)
         kb._graph = loaded.graph
         # Reuse the bundle's prebuilt fact index instead of re-embedding
         # on the first retrieve() call after a load.

@@ -12,13 +12,14 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 import noema
 from noema.parser.entities import DEFAULT_MODEL as DEFAULT_SPACY_MODEL
 from noema.retrieval.assemble import DEFAULT_MAX_TOKENS
-from noema.storage.bundle import DEFAULT_EMBEDDING_MODEL
+from noema.storage.bundle import DEFAULT_EMBEDDING_MODEL, BundleError
 from noema.storage.knowledge_base import DEFAULT_BATCH_SIZE
 
 app = typer.Typer(
@@ -27,6 +28,15 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+def _load_kb(bundle: Path, trust_bundle_models: bool) -> noema.KnowledgeBase:
+    """Load a bundle, turning a bad/unsafe bundle into a clean CLI error."""
+    try:
+        return noema.KnowledgeBase.load(str(bundle), trust_manifest_models=trust_bundle_models)
+    except BundleError as exc:
+        console.print(f"[red]Error:[/red] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
 
 
 def _read_text(text: str | None, file: Path | None) -> str:
@@ -54,7 +64,7 @@ def compress(
     with console.status("Compressing..."):
         result = noema.compress(input_text, spacy_model=spacy_model)
 
-    console.print(result.notation)
+    console.print(result.notation, markup=False, highlight=False)
     console.print()
 
     stats = Table(show_header=False, box=None)
@@ -114,17 +124,22 @@ def query(
     format: str = typer.Option(
         "notation", "--format", help="'notation' (token-efficient) or 'natural_language'."
     ),
+    trust_bundle_models: bool = typer.Option(
+        False,
+        "--trust-bundle-models",
+        help="Use the embedding/spaCy model names recorded in the bundle. Only for bundles you trust.",
+    ),
 ) -> None:
     """Retrieve context for QUESTION from BUNDLE and print it."""
     with console.status("Loading bundle..."):
-        kb = noema.KnowledgeBase.load(str(bundle))
+        kb = _load_kb(bundle, trust_bundle_models)
 
     with console.status("Retrieving..."):
         result = kb.retrieve(
             question, top_k=top_k, hops=hops, max_tokens=max_tokens, format=format
         )
 
-    console.print(result.text)
+    console.print(result.text, markup=False, highlight=False)
     console.print()
     truncated_note = " (truncated by max-tokens)" if result.truncated else ""
     console.print(f"[dim]{result.token_count} tokens{truncated_note}[/dim]")
@@ -135,7 +150,11 @@ def inspect(
     bundle: Path = typer.Argument(..., exists=True, readable=True, help="A .noema bundle."),
 ) -> None:
     """Print summary statistics for a .noema bundle without loading it fully."""
-    loaded = noema.load_bundle(str(bundle))
+    try:
+        loaded = noema.load_bundle(str(bundle))
+    except BundleError as exc:
+        console.print(f"[red]Error:[/red] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
     manifest = loaded.manifest
 
     table = Table(title=str(bundle), show_header=False)
@@ -171,10 +190,15 @@ def benchmark(
     top_k: int = typer.Option(5, "--top-k"),
     hops: int = typer.Option(1, "--hops"),
     max_tokens: int = typer.Option(DEFAULT_MAX_TOKENS, "--max-tokens"),
+    trust_bundle_models: bool = typer.Option(
+        False,
+        "--trust-bundle-models",
+        help="Use the embedding/spaCy model names recorded in the bundle. Only for bundles you trust.",
+    ),
 ) -> None:
     """Compare retrieve() token counts against a naive full-document baseline."""
     with console.status("Loading bundle..."):
-        kb = noema.KnowledgeBase.load(str(bundle))
+        kb = _load_kb(bundle, trust_bundle_models)
 
     baseline_text = "\n".join(path.read_text(encoding="utf-8") for path in document)
     baseline_tokens = noema.count_tokens(baseline_text)

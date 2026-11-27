@@ -17,11 +17,12 @@ from noema.schema import (
     SourceSpan,
 )
 from noema.storage.backends import GraphBackend
-from noema.storage.bundle import LoadedBundle, load_bundle, save_bundle
+from noema.storage.bundle import BundleError, LoadedBundle, load_bundle, save_bundle
 from noema.storage.knowledge_base import IngestReport, KnowledgeBase
 from noema.validator import validate
 
 __all__ = [
+    "BundleError",
     "Document",
     "Entity",
     "EntityType",

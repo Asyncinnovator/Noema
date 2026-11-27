@@ -16,6 +16,13 @@ from noema.schema import Document, Entity, Relation, SourceSpan
 
 DEFAULT_MODEL = "Babelscape/rebel-large"
 
+# Hub revision (commit SHA) of DEFAULT_MODEL to download. None means the
+# repo's moving "main" branch, so a change pushed to the model repo is
+# picked up -- and executed against -- without any change here. Pin it for
+# reproducible, tamper-resistant installs:
+#   python -c "from huggingface_hub import model_info; print(model_info('Babelscape/rebel-large').sha)"
+DEFAULT_REVISION: str | None = None
+
 # Lower than the rule-based extractor's default (1.0) -- REBEL's
 # generated triplets are a less-validated source.
 TRANSFORMER_RELATION_CONFIDENCE = 0.75
@@ -24,12 +31,14 @@ _GENERATE_KWARGS = {"max_length": 256, "length_penalty": 0, "num_beams": 3}
 
 
 @lru_cache(maxsize=1)
-def _load_rebel(model_name: str = DEFAULT_MODEL):
+def _load_rebel(model_name: str = DEFAULT_MODEL, revision: str | None = DEFAULT_REVISION):
     # Imported lazily: a much heavier install than the rest of the parser needs.
+    # trust_remote_code is deliberately left at its default (False): a model
+    # repo must never be able to run its own Python code inside this process.
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, revision=revision)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, revision=revision)
     return tokenizer, model
 
 

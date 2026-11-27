@@ -33,6 +33,7 @@ from sentence_transformers import SentenceTransformer
 from noema.graph.builder import SemanticGraph
 from noema.notation.encoder import encode_graph
 from noema.schema import Entity, Event, Relation
+from noema.storage._atomic import atomic_write
 
 SCHEMA_VERSION = "1"
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
@@ -44,6 +45,22 @@ _GRAPH_ENTRY = "graph.json"
 _EMBEDDINGS_ENTRY = "embeddings.bin"
 _INDEX_ENTRY = "index.faiss"
 _MANIFEST_ENTRY = "manifest.json"
+
+# Upper bounds on how much a single bundle entry may expand to in memory.
+# zip deflate reaches ~1000:1, so without a cap a ~100 KB file can force a
+# multi-hundred-MB read. Both are overridable per load_bundle() call for
+# legitimately huge knowledge bases.
+DEFAULT_MAX_JSON_BYTES = 512 * 1024**2
+DEFAULT_MAX_BINARY_BYTES = 4 * 1024**3
+_MAX_EMBEDDING_DIM = 8192
+
+
+class BundleError(ValueError):
+    """A .noema bundle is malformed, internally inconsistent, or exceeds the
+    size limits. Always raised in place of the KeyError / AttributeError /
+    BadZipFile / faiss RuntimeError a hostile or corrupted file would
+    otherwise surface as.
+    """
 
 
 @lru_cache(maxsize=2)
@@ -168,34 +185,139 @@ def save_bundle(
         "source_document_ids": source_document_ids,
     }
 
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        bundle.writestr(_GRAPH_ENTRY, json.dumps(graph_to_dict(graph)))
-        bundle.writestr(_EMBEDDINGS_ENTRY, embeddings.tobytes())
-        bundle.writestr(_INDEX_ENTRY, faiss.serialize_index(index).tobytes())
-        bundle.writestr(_MANIFEST_ENTRY, json.dumps(manifest, indent=2))
+    # Everything is serialized before the file is touched, and written via a
+    # temp file + atomic rename, so a failure at any point leaves an existing
+    # bundle at `path` intact instead of replacing it with a truncated one.
+    graph_json = json.dumps(graph_to_dict(graph))
+    embeddings_bytes = embeddings.tobytes()
+    index_bytes = faiss.serialize_index(index).tobytes()
+    manifest_json = json.dumps(manifest, indent=2)
+
+    with atomic_write(path) as fh, zipfile.ZipFile(
+        fh, "w", compression=zipfile.ZIP_DEFLATED
+    ) as bundle:
+        bundle.writestr(_GRAPH_ENTRY, graph_json)
+        bundle.writestr(_EMBEDDINGS_ENTRY, embeddings_bytes)
+        bundle.writestr(_INDEX_ENTRY, index_bytes)
+        bundle.writestr(_MANIFEST_ENTRY, manifest_json)
 
 
-def load_bundle(path: str) -> LoadedBundle:
-    """Read a .noema bundle at `path` back into its parts."""
-    with zipfile.ZipFile(path, "r") as bundle:
-        graph_data = json.loads(bundle.read(_GRAPH_ENTRY))
-        manifest = json.loads(bundle.read(_MANIFEST_ENTRY))
-        embeddings_bytes = bundle.read(_EMBEDDINGS_ENTRY)
-        index_bytes = bundle.read(_INDEX_ENTRY)
+def _read_entry(bundle: zipfile.ZipFile, name: str, limit: int) -> bytes:
+    """Read one bundle entry, refusing missing entries and ones that would
+    expand past `limit` bytes. The declared size is checked first (Python's
+    zipfile never yields more than the declared size), and the read itself
+    is bounded as well.
+    """
+    try:
+        info = bundle.getinfo(name)
+    except KeyError:
+        raise BundleError(f"Not a valid .noema bundle: missing entry {name!r}") from None
+    if info.file_size > limit:
+        raise BundleError(
+            f"Bundle entry {name!r} expands to {info.file_size:,} bytes, over the "
+            f"{limit:,}-byte limit"
+        )
+    with bundle.open(info) as fh:
+        data = fh.read(limit + 1)
+    if len(data) > limit:
+        raise BundleError(f"Bundle entry {name!r} is larger than the {limit:,}-byte limit")
+    return data
 
-    graph = graph_from_dict(graph_data)
 
+def _load_json(data: bytes, name: str) -> dict:
+    try:
+        parsed = json.loads(data)
+    except (ValueError, RecursionError) as exc:
+        raise BundleError(f"Bundle entry {name!r} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise BundleError(f"Bundle entry {name!r} must be a JSON object")
+    return parsed
+
+
+def _validate_manifest(manifest: dict) -> None:
+    version = manifest.get("schema_version")
+    if version != SCHEMA_VERSION:
+        raise BundleError(
+            f"Unsupported bundle schema_version {version!r}; this version of noema reads "
+            f"{SCHEMA_VERSION!r}"
+        )
+    dim = manifest.get("embedding_dim")
+    if not isinstance(dim, int) or isinstance(dim, bool) or not 0 < dim <= _MAX_EMBEDDING_DIM:
+        raise BundleError(f"Invalid embedding_dim in manifest: {dim!r}")
+    fact_ids = manifest.get("fact_ids")
+    if not isinstance(fact_ids, list) or not all(isinstance(f, str) for f in fact_ids):
+        raise BundleError("Manifest fact_ids must be a list of strings")
+    if len(set(fact_ids)) != len(fact_ids):
+        raise BundleError("Manifest fact_ids contains duplicates")
+    for key in ("embedding_model", "spacy_model"):
+        value = manifest.get(key)
+        if value is not None and not isinstance(value, str):
+            raise BundleError(f"Manifest {key} must be a string or null")
+
+
+def load_bundle(
+    path: str,
+    *,
+    max_json_bytes: int = DEFAULT_MAX_JSON_BYTES,
+    max_binary_bytes: int = DEFAULT_MAX_BINARY_BYTES,
+) -> LoadedBundle:
+    """Read a .noema bundle at `path` back into its parts.
+
+    The file is validated rather than trusted: entry sizes are capped, the
+    manifest is schema-checked, and the graph, fact ids, embedding matrix and
+    faiss index must agree with each other. Anything wrong raises
+    `BundleError`. Note that faiss's own deserializer is not hardened against
+    hostile input, so bundles from untrusted sources should still not be
+    loaded.
+    """
+    try:
+        with zipfile.ZipFile(path, "r") as bundle:
+            graph_data = _load_json(_read_entry(bundle, _GRAPH_ENTRY, max_json_bytes), _GRAPH_ENTRY)
+            manifest = _load_json(
+                _read_entry(bundle, _MANIFEST_ENTRY, max_json_bytes), _MANIFEST_ENTRY
+            )
+            embeddings_bytes = _read_entry(bundle, _EMBEDDINGS_ENTRY, max_binary_bytes)
+            index_bytes = _read_entry(bundle, _INDEX_ENTRY, max_binary_bytes)
+    except zipfile.BadZipFile as exc:
+        raise BundleError(f"Not a valid .noema bundle (bad zip file): {exc}") from exc
+
+    _validate_manifest(manifest)
     dim = manifest["embedding_dim"]
-    embeddings = (
-        np.frombuffer(embeddings_bytes, dtype="float32").reshape(-1, dim)
-        if embeddings_bytes
-        else np.zeros((0, dim), dtype="float32")
-    )
-    index = faiss.deserialize_index(np.frombuffer(index_bytes, dtype="uint8"))
+    fact_ids = manifest["fact_ids"]
+
+    try:
+        graph = graph_from_dict(graph_data)
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise BundleError(f"Bundle graph.json is malformed: {exc}") from exc
+
+    relation_ids = {r.id for r in graph.relations}
+    unknown = [f for f in fact_ids if f not in relation_ids]
+    if unknown:
+        raise BundleError(f"Manifest fact_ids reference unknown relations: {unknown[:3]}")
+
+    expected_bytes = len(fact_ids) * dim * 4
+    if len(embeddings_bytes) != expected_bytes:
+        raise BundleError(
+            f"embeddings.bin is {len(embeddings_bytes):,} bytes; expected {expected_bytes:,} "
+            f"for {len(fact_ids)} facts x {dim} dims"
+        )
+    embeddings = np.frombuffer(embeddings_bytes, dtype="float32").reshape(-1, dim)
+
+    try:
+        index = faiss.deserialize_index(np.frombuffer(index_bytes, dtype="uint8"))
+    except Exception as exc:  # faiss raises bare RuntimeError / SWIG errors
+        raise BundleError(f"Bundle index.faiss could not be read: {exc}") from exc
+    if not isinstance(index, faiss.IndexFlat) or index.metric_type != faiss.METRIC_INNER_PRODUCT:
+        raise BundleError("Bundle index.faiss is not an inner-product flat index")
+    if index.d != dim or index.ntotal != len(fact_ids):
+        raise BundleError(
+            f"index.faiss holds {index.ntotal} vectors of dim {index.d}; manifest says "
+            f"{len(fact_ids)} facts of dim {dim}"
+        )
 
     return LoadedBundle(
         graph=graph,
-        fact_ids=manifest["fact_ids"],
+        fact_ids=fact_ids,
         embeddings=embeddings,
         index=index,
         manifest=manifest,

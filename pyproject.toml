@@ -36,7 +36,10 @@ dependencies = [
     "sentence-transformers>=5.7.0",
     "spacy>=3.8.14",
     "tiktoken>=0.13.0",
-    "torch>=2.5.0",
+    # >=2.6: earlier releases' torch.load(weights_only=True) could be bypassed
+    # for remote code execution (CVE-2025-32434), and transformers loads
+    # pickled checkpoints through it.
+    "torch>=2.6.0",
     # Pinned <5.0: transformers 5.x breaks fastcoref's model loading
     # (missing all_tied_weights_keys). Also covers this project's REBEL/NLI use.
     "transformers>=4.40,<5.0",
