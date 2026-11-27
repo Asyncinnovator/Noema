@@ -52,6 +52,40 @@ def _resolve_entity(token: Token, index: list[tuple[int, int, Entity]]) -> Entit
     return None
 
 
+# Words that flip or void the claim of a clause when they modify the root
+# verb or one of its arguments ("did NOT acquire", "acquired NO company",
+# "NEITHER Google nor Apple acquired ...").
+_NEGATIVE_WORDS = {"no", "not", "n't", "never", "neither", "nor", "none", "nobody", "nothing"}
+_ARGUMENT_DEPS = {"nsubj", "nsubjpass", "dobj", "attr", "agent", "prep", "pobj"}
+_NEGATING_MODIFIER_DEPS = {"neg", "det", "cc", "preconj", "advmod"}
+
+
+def _is_negated(root: Token) -> bool:
+    """True if the clause headed by `root` is negated.
+
+    A negated clause asserts the opposite of what the plain SVO reading
+    would extract ("Google did not acquire YouTube" must not yield
+    acquire(Google, YouTube)), so callers skip it entirely rather than emit
+    a fact the text denies.
+
+    Only the root's own negation and the modifiers of its direct arguments
+    are inspected, so a negation inside a subordinate clause ("Google
+    acquired YouTube, which never turned a profit") does not suppress the
+    main clause.
+    """
+    if any(child.dep_ == "neg" for child in root.children):
+        return True
+
+    for arg in root.children:
+        if arg.dep_ not in _ARGUMENT_DEPS:
+            continue
+        for head in (arg, *arg.conjuncts):
+            for modifier in head.children:
+                if modifier.dep_ in _NEGATING_MODIFIER_DEPS and modifier.lower_ in _NEGATIVE_WORDS:
+                    return True
+    return False
+
+
 def _expand_conjuncts(token: Token) -> list[Token]:
     """'Larry Page and Sergey Brin' -> both head tokens, so 'X founded Google
     and Yahoo' or 'X and Y founded Google' each yield one relation per pair.
@@ -99,6 +133,8 @@ def extract_relations(
             (c for c in root.children if c.dep_ in ("nsubj", "nsubjpass")), None
         )
         if subj_token is None:
+            continue
+        if _is_negated(root):
             continue
         is_passive = subj_token.dep_ == "nsubjpass"
 

@@ -334,6 +334,56 @@ class TestSurnameMatching:
         assert canon.entities[0].name == "Google"
 
 
+class TestAmbiguousSurname:
+    def test_bare_surname_does_not_merge_distinct_people(self, patched_embedding_model):
+        # "Chen" matches both full names; joining it to each would
+        # transitively merge David Chen and Wei Chen into one person.
+        graph = SemanticGraph()
+        for name in ("David Chen", "Wei Chen", "Chen"):
+            graph.add_entity(_entity(name, EntityType.PERSON))
+        canon = dedup.canonicalize(graph)
+        names = {e.name for e in canon.entities}
+        assert {"David Chen", "Wei Chen"} <= names
+        assert len(canon.entities) == 3
+
+    def test_unambiguous_surname_still_merges_when_other_people_present(
+        self, patched_embedding_model
+    ):
+        graph = SemanticGraph()
+        for name in ("David Chen", "Wei Zhang", "Chen"):
+            graph.add_entity(_entity(name, EntityType.PERSON))
+        canon = dedup.canonicalize(graph)
+        assert len(canon.entities) == 2
+        david = next(e for e in canon.entities if e.name == "David Chen")
+        assert "Chen" in david.aliases
+
+
+class TestNameNormalization:
+    def test_symbols_that_carry_identity_are_kept(self):
+        assert dedup._normalize_name("C++") != dedup._normalize_name("C#")
+        assert dedup._normalize_name("AT&T") != dedup._normalize_name("ATT")
+
+    @pytest.mark.parametrize("name", ["Group", "Company", "Holdings Inc.", "Inc"])
+    def test_all_suffix_name_is_not_normalized_to_empty(self, name):
+        assert dedup._normalize_name(name) != ""
+
+    def test_suffix_only_names_do_not_merge_with_each_other(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("Group", EntityType.ORG))
+        graph.add_entity(_entity("Company", EntityType.ORG))
+        assert len(dedup.canonicalize(graph).entities) == 2
+
+    def test_c_plus_plus_and_c_sharp_do_not_merge(self, patched_embedding_model):
+        graph = SemanticGraph()
+        graph.add_entity(_entity("C++", EntityType.PRODUCT))
+        graph.add_entity(_entity("C#", EntityType.PRODUCT))
+        assert len(dedup.canonicalize(graph).entities) == 2
+
+    def test_existing_suffix_behaviour_unchanged(self):
+        assert dedup._normalize_name("Google, Inc.") == "google"
+        assert dedup._normalize_name("Company House") == "company house"
+
+
 class TestIsSurnameMatch:
     def test_matching_surname(self):
         assert dedup._is_surname_match("chen", "david chen") is True

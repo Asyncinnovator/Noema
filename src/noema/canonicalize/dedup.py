@@ -28,7 +28,9 @@ DEFAULT_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_SIMILARITY_THRESHOLD = 0.85
 
 _WHITESPACE = re.compile(r"\s+")
-_PUNCT = re.compile(r"[^\w\s]")
+# Punctuation is dropped, except "+", "#" and "&", which can be part of a
+# name's identity ("C++" vs "C#", "AT&T" vs "ATT").
+_PUNCT = re.compile(r"[^\w\s+#&]")
 
 # Common business-entity suffixes, stripped during normalization so
 # "Google Inc." and "Google" become an exact match before embeddings.
@@ -41,13 +43,18 @@ _BUSINESS_SUFFIXES = {
 def _normalize_name(name: str) -> str:
     """'Google, Inc.' -> 'google' -- for cheap exact-match comparison
     before falling back to embeddings.
+
+    Never returns an empty key for a non-empty name: if stripping business
+    suffixes would remove every word ("Group", "Holdings Inc."), the
+    unstripped form is kept, so unrelated names don't all collapse onto ""
+    and merge as exact matches.
     """
-    name = _PUNCT.sub("", name.lower())
-    name = _WHITESPACE.sub(" ", name).strip()
-    words = name.split()
+    cleaned = _WHITESPACE.sub(" ", _PUNCT.sub("", name.lower())).strip()
+    words = cleaned.split()
     while words and words[-1] in _BUSINESS_SUFFIXES:
         words.pop()
-    return " ".join(words)
+    normalized = " ".join(words) if words else cleaned
+    return normalized or name.strip().lower()
 
 
 @lru_cache(maxsize=2)
@@ -158,12 +165,22 @@ def canonicalize(
         distinct_names = list(by_normalized.keys())
 
         if entity_type == EntityType.PERSON:
-            for name_a in distinct_names:
-                for name_b in distinct_names:
-                    if name_a == name_b:
-                        continue
-                    if _is_surname_match(name_a, name_b):
-                        uf.union(by_normalized[name_a][0].id, by_normalized[name_b][0].id)
+            # A bare surname is attached to a full name only when exactly one
+            # full name in this group ends in it. If several do ("Chen" with
+            # both "David Chen" and "Wei Chen"), the surname is ambiguous and
+            # is left unmerged; joining it to each would transitively merge
+            # the distinct people into one entity.
+            full_names_by_surname: dict[str, list[str]] = defaultdict(list)
+            for name in distinct_names:
+                words = name.split()
+                if len(words) > 1:
+                    full_names_by_surname[words[-1]].append(name)
+            for name in distinct_names:
+                if len(name.split()) != 1:
+                    continue
+                candidates = full_names_by_surname.get(name, [])
+                if len(candidates) == 1:
+                    uf.union(by_normalized[name][0].id, by_normalized[candidates[0]][0].id)
 
         if len(distinct_names) > 1:
             model = _load_model(model_name)

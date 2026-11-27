@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from noema.parser.entities import extract_entities
 from noema.parser.relations import extract_relations
 
@@ -135,3 +137,44 @@ class TestNoSelfRelations:
         entities = extract_entities(doc)
         relations = extract_relations(doc, entities)
         assert all(r.subject_id != r.object_id for r in relations)
+
+class TestNegation:
+    """A negated clause asserts the opposite of its plain SVO reading, so
+    no relation may be emitted for it.
+    """
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Google did not acquire YouTube.",
+            "Larry Page never founded Yahoo.",
+            "Google could not acquire YouTube.",
+            "Google has not been acquired by Microsoft.",
+            "Google isn't the CEO of Alphabet.",
+            "Google acquired no company named YouTube.",
+            "Neither Google nor Apple acquired Slack.",
+        ],
+    )
+    def test_negated_clause_emits_no_relation(self, make_document, text):
+        doc = make_document(text)
+        entities = extract_entities(doc)
+        assert extract_relations(doc, entities) == []
+
+    def test_affirmative_sentence_still_extracted(self, make_document):
+        doc = make_document("Google acquired YouTube in 2006.")
+        entities = extract_entities(doc)
+        triples = _relation_triples(doc, entities, extract_relations(doc, entities))
+        assert ("Google", "acquire", "YouTube") in triples
+
+    def test_negation_in_one_sentence_does_not_suppress_the_next(self, make_document):
+        doc = make_document("Google did not acquire Yahoo. Google acquired YouTube.")
+        entities = extract_entities(doc)
+        triples = _relation_triples(doc, entities, extract_relations(doc, entities))
+        assert ("Google", "acquire", "YouTube") in triples
+        assert ("Google", "acquire", "Yahoo") not in triples
+
+    def test_negation_in_subordinate_clause_does_not_suppress_main_clause(self, make_document):
+        doc = make_document("Google acquired YouTube, which never turned a profit.")
+        entities = extract_entities(doc)
+        triples = _relation_triples(doc, entities, extract_relations(doc, entities))
+        assert ("Google", "acquire", "YouTube") in triples
